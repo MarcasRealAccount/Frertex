@@ -87,6 +87,9 @@ namespace Frertex
 							include = (*macro)[0].m_Str;
 							break;
 						}
+						default:
+							addError(input.m_Span, input.m_Span.m_Start, "Expected string or identifier");
+							continue;
 						}
 
 						if (!hasIncludedFile(include))
@@ -98,7 +101,7 @@ namespace Frertex
 								continue;
 							}
 
-							std::vector<Token> includedTokens = Tokenize(result.m_Source, { 0, 0, 0, m_IncludedFilenames.size() });
+							std::vector<Token> includedTokens = Tokenize(result.m_Source, { 0, 0, 0, m_IncludedFilenames.size(), m_IncludedFilenames.size() });
 
 							itr                     = output.erase(itr);
 							eraseDirective          = false;
@@ -297,6 +300,138 @@ namespace Frertex
 						}
 
 						addWarning(preprocessorSpan, directive.m_Span.m_Start, std::move(warn));
+					}
+					else if (directive.m_Str == "line")
+					{
+						directiveHandled = true;
+						if (preprocessorTokens.size() < 2)
+						{
+							SourcePoint point = directive.m_Span.m_End;
+							++point.m_Column;
+							addError(SourceSpan { point, point }, point, "Expected integer or identifier");
+							continue;
+						}
+
+						auto&       lineNumber = preprocessorTokens[1];
+						std::size_t ln         = 0;
+						switch (lineNumber.m_Class)
+						{
+						case ETokenClass::Integer:
+							ln = std::strtoull(lineNumber.m_Str.c_str(), nullptr, 10);
+							break;
+						case ETokenClass::BinaryInteger:
+							ln = std::strtoull(lineNumber.m_Str.c_str() + 2, nullptr, 2);
+							break;
+						case ETokenClass::OctalInteger:
+							ln = std::strtoull(lineNumber.m_Str.c_str() + 2, nullptr, 8);
+							break;
+						case ETokenClass::HexInteger:
+							ln = std::strtoull(lineNumber.m_Str.c_str() + 2, nullptr, 16);
+							break;
+						case ETokenClass::Identifier:
+						{
+							auto macro = getMacro(lineNumber.m_Str);
+							if (!macro)
+							{
+								addError(lineNumber.m_Span, lineNumber.m_Span.m_Start, "Macro has not been defined");
+								continue;
+							}
+							if (macro->empty())
+							{
+								addWarning(lineNumber.m_Span, lineNumber.m_Span.m_Start, "Macro is empty, skipping include");
+								continue;
+							}
+
+							auto& lnn = (*macro)[0];
+							switch (lnn.m_Class)
+							{
+							case ETokenClass::Integer:
+								ln = std::strtoull(lineNumber.m_Str.c_str(), nullptr, 10);
+								break;
+							case ETokenClass::BinaryInteger:
+								ln = std::strtoull(lineNumber.m_Str.c_str() + 2, nullptr, 2);
+								break;
+							case ETokenClass::OctalInteger:
+								ln = std::strtoull(lineNumber.m_Str.c_str() + 2, nullptr, 8);
+								break;
+							case ETokenClass::HexInteger:
+								ln = std::strtoull(lineNumber.m_Str.c_str() + 2, nullptr, 16);
+								break;
+							default:
+								addError(lineNumber.m_Span, lineNumber.m_Span.m_Start, "Macro requires first token to be an integer (Future: Evaluate all tokens first)");
+								continue;
+							}
+							break;
+						}
+						default:
+							addError(lineNumber.m_Span, lineNumber.m_Span.m_Start, "Expected integer or identifier");
+							continue;
+						}
+
+						std::size_t file = directive.m_Span.m_Start.m_File;
+
+						if (preprocessorTokens.size() > 2)
+						{
+							auto& filename = preprocessorTokens[2];
+
+							std::string_view filenameStr;
+							switch (filename.m_Class)
+							{
+							case ETokenClass::String:
+								if (preprocessorTokens.size() > 3)
+									addWarning(SourceSpan { preprocessorTokens[3].m_Span.m_Start, preprocessorTokens.rbegin()->m_Span.m_End }, preprocessorTokens[3].m_Span.m_Start, "Unused");
+								filenameStr = filename.m_Str;
+								break;
+							case ETokenClass::Identifier:
+							{
+								auto macro = getMacro(filename.m_Str);
+								if (!macro)
+								{
+									addError(filename.m_Span, filename.m_Span.m_Start, "Macro has not been defined");
+									continue;
+								}
+								if (macro->empty())
+								{
+									addWarning(filename.m_Span, filename.m_Span.m_Start, "Macro is empty, skipping include");
+									continue;
+								}
+								if ((*macro)[0].m_Class != ETokenClass::String)
+								{
+									addError(filename.m_Span, filename.m_Span.m_Start, "Macro requires first token to be a string (Future: Evaluate all tokens first)");
+									continue;
+								}
+								filenameStr = (*macro)[0].m_Str;
+								break;
+							}
+							}
+
+							auto itr2 = m_IncludedFilenames.begin();
+							while (itr2 != m_IncludedFilenames.end() && *itr2 != filenameStr)
+								++itr2;
+							if (itr2 == m_IncludedFilenames.end())
+							{
+								file = m_IncludedFilenames.size();
+								m_IncludedFilenames.emplace_back(filenameStr);
+								itr2 = m_IncludedFilenames.end() - 1;
+							}
+							file = itr2 - m_IncludedFilenames.begin();
+						}
+
+						std::size_t baseFile = directive.m_Span.m_Start.m_File;
+						std::size_t baseline = directive.m_Span.m_Start.m_Line + 2;
+
+						for (auto itr2 = itr + 1; itr2 != output.end(); ++itr2)
+						{
+							if (itr2->m_Span.m_Start.m_File == baseFile)
+							{
+								itr2->m_Span.m_Start.m_Line -= baseline;
+								itr2->m_Span.m_Start.m_Line += ln;
+								itr2->m_Span.m_Start.m_File = file;
+								itr2->m_Span.m_End.m_Line -= baseline;
+								itr2->m_Span.m_End.m_Line += ln;
+								itr2->m_Span.m_End.m_File = file;
+							}
+						}
 					}
 					else if (directive.m_Str == "elif")
 					{

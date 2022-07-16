@@ -17,16 +17,17 @@ namespace Frertex
 
 	std::string FormatMessage(const Message& message, const std::vector<std::string>& filenames, LineCallback lineCallback)
 	{
-		std::string_view filename = filenames[message.m_Span.m_Start.m_File];
+		std::string_view filename       = filenames[message.m_Span.m_Start.m_File];
+		std::string_view actualFilename = filenames[message.m_Span.m_Start.m_ActualFile];
 
-		if (message.m_Span.m_Start.m_File != message.m_Span.m_End.m_File)
+		if (message.m_Span.m_Start.m_ActualFile != message.m_Span.m_End.m_ActualFile)
 			return std::format("{} {}:{} {}: {}\n{}\n{}^\nMultifile messages not supported, and never will, sorry :)",
 			                   filename,
 			                   message.m_Span.m_Start.m_Line + 1,
 			                   message.m_Span.m_Start.m_Column + 1,
 			                   MessageTypeToString(message.m_Type),
 			                   message.m_Message,
-			                   lineCallback(filename, message.m_Span.m_Start),
+			                   lineCallback(actualFilename, message.m_Span.m_Start),
 			                   std::string(message.m_Span.m_Start.m_Column + 1, ' '));
 
 		if (message.m_Span.m_Start.m_Line == message.m_Span.m_End.m_Line)
@@ -37,14 +38,14 @@ namespace Frertex
 			                   message.m_Span.m_Start.m_Column + 1,
 			                   MessageTypeToString(message.m_Type),
 			                   message.m_Message,
-			                   lineCallback(filename, message.m_Span.m_Start),
+			                   lineCallback(actualFilename, message.m_Span.m_Start),
 			                   std::string(message.m_Span.m_Start.m_Column + 1, ' '),
 			                   std::string(message.m_Point.m_Column - message.m_Span.m_Start.m_Column, '~'),
 			                   std::string(message.m_Span.m_End.m_Column - message.m_Point.m_Column - 1, '~'));
 		}
 		else
 		{
-			auto line = lineCallback(filename, message.m_Span.m_Start);
+			auto line = lineCallback(actualFilename, message.m_Span.m_Start);
 
 			std::size_t spaces, squigglesStart, squigglesEnd;
 			if (message.m_Span.m_Start.m_Line == message.m_Point.m_Line)

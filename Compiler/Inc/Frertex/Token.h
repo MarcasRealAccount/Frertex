@@ -40,7 +40,7 @@ namespace Frertex
 	struct SourcePoint
 	{
 		std::size_t m_Index, m_Line, m_Column;
-		std::size_t m_File = 0;
+		std::size_t m_File = 0, m_ActualFile = 0;
 	};
 
 	struct SourceSpan

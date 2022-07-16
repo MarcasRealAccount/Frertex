@@ -18,11 +18,13 @@
 #error "Hehe was defined"
 #endif
 
+#line 5
 #if true
 #warn "Cool"
 #else
 #error "Bad"
 #endif
+#line 68 "ProfoundFile.frer"
 #ifdef Hehe
 #include Hehe
 #endif
