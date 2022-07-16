@@ -40,7 +40,7 @@ namespace Frertex
 			                   lineCallback(filename, message.m_Span.m_Start),
 			                   std::string(message.m_Span.m_Start.m_Column + 1, ' '),
 			                   std::string(message.m_Point.m_Column - message.m_Span.m_Start.m_Column, '~'),
-			                   std::string(message.m_Span.m_End.m_Column - message.m_Point.m_Column, '~'));
+			                   std::string(message.m_Span.m_End.m_Column - message.m_Point.m_Column - 1, '~'));
 		}
 		else
 		{
@@ -58,7 +58,7 @@ namespace Frertex
 				squigglesStart = message.m_Point.m_Column;
 			}
 			if (message.m_Span.m_End.m_Line == message.m_Point.m_Line)
-				squigglesEnd = message.m_Span.m_End.m_Column - message.m_Point.m_Column;
+				squigglesEnd = message.m_Span.m_End.m_Column - message.m_Point.m_Column - 1;
 			else
 				squigglesEnd = line.size() - message.m_Point.m_Column;
 			return std::format("{} {}:{} -> {}:{} {}: {}\n{}\n{}^\nMultiline messages not supported atm, sorry :)",

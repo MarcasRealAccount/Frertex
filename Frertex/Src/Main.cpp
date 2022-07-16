@@ -30,6 +30,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 	tokens                  = preprocessor.process(std::move(tokens), "Test.frer");
 	auto& messages          = preprocessor.getMessages();
 	auto& includedFilenames = preprocessor.getIncludeFilenames();
+	bool  errored           = false;
 	if (!messages.empty())
 	{
 		for (auto& message : messages)
@@ -56,11 +57,13 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 				std::cout << output << '\n';
 				break;
 			case Frertex::EMessageType::Error:
+				errored = true;
 				std::cerr << output << '\n';
 				break;
 			}
 		}
-		return 1;
+		if (errored)
+			return 1;
 	}
 	for (auto& token : tokens)
 		std::cout << token << '\n';

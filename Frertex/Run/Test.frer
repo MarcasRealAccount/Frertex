@@ -8,6 +8,11 @@
 #define TEST5"Hehe.frer"
 #undefine TEST5
 #include TEST5*/
+#define Hehe "A macro based message"
+#error "Oh shit"
+#error Hehe
+#warn "Oh shit"
+#warn Hehe
 
 void Vert(in float4 inPosition,
           in float4 inNormal,

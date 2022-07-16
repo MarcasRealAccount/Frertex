@@ -193,6 +193,100 @@ namespace Frertex
 
 					removeMacro(name.m_Str);
 				}
+				else if (directive.m_Str == "error")
+				{
+					if (preprocessorTokens.size() < 2)
+					{
+						SourcePoint point = directive.m_Span.m_End;
+						++point.m_Column;
+						addError(SourceSpan { point, point }, point, "Expected string or identifier");
+						continue;
+					}
+					else if (preprocessorTokens.size() > 2)
+					{
+						addWarning(SourceSpan { preprocessorTokens[2].m_Span.m_Start, preprocessorTokens.rbegin()->m_Span.m_End }, preprocessorTokens[2].m_Span.m_Start, "Unused");
+					}
+
+					auto&       input = preprocessorTokens[1];
+					std::string error;
+
+					switch (input.m_Class)
+					{
+					case ETokenClass::String:
+						error = input.m_Str;
+						break;
+					case ETokenClass::Identifier:
+					{
+						auto macro = getMacro(input.m_Str);
+						if (!macro)
+						{
+							addError(input.m_Span, input.m_Span.m_Start, "Macro has not been defined");
+							continue;
+						}
+						if (macro->empty())
+						{
+							addWarning(input.m_Span, input.m_Span.m_Start, "Macro is empty, skipping include");
+							continue;
+						}
+						if ((*macro)[0].m_Class != ETokenClass::String)
+						{
+							addError(input.m_Span, input.m_Span.m_Start, "Macro requires first token to be a string (Future: Evaluate all tokens first)");
+							continue;
+						}
+						error = (*macro)[0].m_Str;
+						break;
+					}
+					}
+
+					addError(preprocessorSpan, directive.m_Span.m_Start, std::move(error));
+				}
+				else if (directive.m_Str == "warn")
+				{
+					if (preprocessorTokens.size() < 2)
+					{
+						SourcePoint point = directive.m_Span.m_End;
+						++point.m_Column;
+						addError(SourceSpan { point, point }, point, "Expected string or identifier");
+						continue;
+					}
+					else if (preprocessorTokens.size() > 2)
+					{
+						addWarning(SourceSpan { preprocessorTokens[2].m_Span.m_Start, preprocessorTokens.rbegin()->m_Span.m_End }, preprocessorTokens[2].m_Span.m_Start, "Unused");
+					}
+
+					auto&       input = preprocessorTokens[1];
+					std::string warn;
+
+					switch (input.m_Class)
+					{
+					case ETokenClass::String:
+						warn = input.m_Str;
+						break;
+					case ETokenClass::Identifier:
+					{
+						auto macro = getMacro(input.m_Str);
+						if (!macro)
+						{
+							addError(input.m_Span, input.m_Span.m_Start, "Macro has not been defined");
+							continue;
+						}
+						if (macro->empty())
+						{
+							addWarning(input.m_Span, input.m_Span.m_Start, "Macro is empty, skipping include");
+							continue;
+						}
+						if ((*macro)[0].m_Class != ETokenClass::String)
+						{
+							addError(input.m_Span, input.m_Span.m_Start, "Macro requires first token to be a string (Future: Evaluate all tokens first)");
+							continue;
+						}
+						warn = (*macro)[0].m_Str;
+						break;
+					}
+					}
+
+					addWarning(preprocessorSpan, directive.m_Span.m_Start, std::move(warn));
+				}
 				else
 				{
 					addWarning(directive.m_Span, directive.m_Span.m_Start, std::format("Unknown preprocessor directive \"{}\"", Utils::EscapeString(directive.m_Str)));
