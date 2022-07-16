@@ -5,9 +5,9 @@
 namespace Frertex::Utils
 {
 	template <class T, class U>
-	concept ConstructibleFrom = requires(U u)
+	concept ConstructibleFrom = requires(T t)
 	{
-		T { u };
+		U { t };
 	};
 
 	template <class T>

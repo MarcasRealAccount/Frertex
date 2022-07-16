@@ -1,8 +1,13 @@
-#include "Other.frer"
-#include
-#hehe
-#include "Other.frer" hehe anotherHehe
-#69
+#define TEST "Other.frer"
+#include TEST
+#define TEST2() funny
+#define TEST3 notAString
+#include TEST3
+#define TEST4
+#include TEST4
+#define TEST5"Hehe.frer"
+#undefine TEST5
+#include TEST5
 
 void Vert(in float4 inPosition,
           in float4 inNormal,

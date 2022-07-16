@@ -8,27 +8,28 @@
 #include <sstream>
 #include <string>
 
-std::string ReadIncludedFile(std::string_view filename)
+Frertex::IncludeData ReadIncludedFile(std::string_view filename)
 {
-	std::string   source;
 	std::ifstream file { std::string { filename }, std::ios::ate };
 	if (file)
 	{
+		std::string source;
 		source.resize(file.tellg());
 		file.seekg(0);
 		file.read(source.data(), source.size());
 		file.close();
+		return { Frertex::EIncludeStatus::Success, std::move(source) };
 	}
-	return source;
+	return {};
 }
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 {
-	std::vector<Frertex::Message> messages;
-	std::vector<std::string>      includedFilenames;
-
-	auto tokens = Frertex::Tokenize(ReadIncludedFile("Test.frer"));
-	tokens      = Frertex::Preprocess(std::move(tokens), &ReadIncludedFile, "Test.frer", includedFilenames, messages);
+	auto                  tokens = Frertex::Tokenize(ReadIncludedFile("Test.frer").m_Source);
+	Frertex::Preprocessor preprocessor { &ReadIncludedFile };
+	tokens                  = preprocessor.process(std::move(tokens), "Test.frer");
+	auto& messages          = preprocessor.getMessages();
+	auto& includedFilenames = preprocessor.getIncludeFilenames();
 	if (!messages.empty())
 	{
 		for (auto& message : messages)
@@ -38,14 +39,16 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 			    includedFilenames,
 			    [](std::string_view filename, Frertex::SourcePoint line) -> std::string
 			    {
-				    std::string str       = ReadIncludedFile(filename);
+				    auto result = ReadIncludedFile(filename);
+				    if (result.m_Status == Frertex::EIncludeStatus::Failure)
+					    return {};
 				    std::size_t lineStart = line.m_Index;
-				    while (lineStart > 0 && str[lineStart - 1] != '\n')
+				    while (lineStart > 0 && result.m_Source[lineStart - 1] != '\n')
 					    --lineStart;
 				    std::size_t lineEnd = line.m_Index;
-				    while (lineEnd < str.size() && str[lineEnd] != '\n')
+				    while (lineEnd < result.m_Source.size() && result.m_Source[lineEnd] != '\n')
 					    ++lineEnd;
-				    return str.substr(lineStart, lineEnd - lineStart);
+				    return result.m_Source.substr(lineStart, lineEnd - lineStart);
 			    });
 			switch (message.m_Type)
 			{
