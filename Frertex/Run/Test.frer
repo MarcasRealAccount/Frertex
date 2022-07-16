@@ -1,0 +1,20 @@
+#include "Other.frer"
+#include
+#hehe
+#include "Other.frer" hehe anotherHehe
+#69
+
+void Vert(in float4 inPosition,
+          in float4 inNormal,
+          out float4 outPosition : Position,
+          out float2 outUV) : VertexShader
+{
+    outPosition = float4(inPosition.xyz, 1.0f);
+    outUV       = float2(inPosition.w, outPosition.w);
+}
+
+void Frag(in float2 inUV,
+          out float4 outColor) : FragmentShader
+{
+    outColor = float4(inUV, 0.0f, 1.0h);
+}

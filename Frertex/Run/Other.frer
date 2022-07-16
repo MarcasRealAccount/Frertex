@@ -1,0 +1,6 @@
+float3 function(float4 something)
+{
+	return something.xyz;
+}
+
+#include NonExistent
