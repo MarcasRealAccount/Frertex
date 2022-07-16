@@ -9,10 +9,23 @@
 #undefine TEST5
 #include TEST5*/
 #define Hehe "A macro based message"
+#ifndef Hehe
 #error "Oh shit"
 #error Hehe
 #warn "Oh shit"
 #warn Hehe
+#else
+#error "Hehe was defined"
+#endif
+
+#if true
+#warn "Cool"
+#else
+#error "Bad"
+#endif
+#ifdef Hehe
+#include Hehe
+#endif
 
 void Vert(in float4 inPosition,
           in float4 inNormal,

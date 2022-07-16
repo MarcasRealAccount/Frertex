@@ -26,271 +26,541 @@ namespace Frertex
 			}
 			else if (itr->m_Class == ETokenClass::Preprocessor)
 			{
-				auto preprocessorSpan = itr->m_Span;
-
-				std::vector<Token> preprocessorTokens = Tokenize(itr->m_Str.substr(1), preprocessorSpan.m_Start);
-
-				itr = output.erase(itr);
-
-				if (preprocessorTokens.empty())
-					continue;
-
-				auto& directive = preprocessorTokens[0];
-				if (directive.m_Class != ETokenClass::Identifier)
+				bool eraseDirective = true;
+				do
 				{
-					addError(directive.m_Span, directive.m_Span.m_Start, "Expected identifier");
-					continue;
-				}
+					auto preprocessorSpan = itr->m_Span;
 
-				if (directive.m_Str == "include")
-				{
-					if (preprocessorTokens.size() < 2)
-					{
-						SourcePoint point = directive.m_Span.m_End;
-						++point.m_Column;
-						addError(SourceSpan { point, point }, point, "Expected string or identifier");
+					std::vector<Token> preprocessorTokens = Tokenize(itr->m_Str.substr(1), preprocessorSpan.m_Start);
+
+					if (preprocessorTokens.empty())
 						continue;
-					}
-					else if (preprocessorTokens.size() > 2)
-					{
-						addWarning(SourceSpan { preprocessorTokens[2].m_Span.m_Start, preprocessorTokens.rbegin()->m_Span.m_End }, preprocessorTokens[2].m_Span.m_Start, "Unused");
-					}
 
-					auto&       input = preprocessorTokens[1];
-					std::string include;
-
-					switch (input.m_Class)
+					auto& directive = preprocessorTokens[0];
+					if (directive.m_Class != ETokenClass::Identifier)
 					{
-					case ETokenClass::String:
-						include = input.m_Str;
-						break;
-					case ETokenClass::Identifier:
-					{
-						auto macro = getMacro(input.m_Str);
-						if (!macro)
-						{
-							addError(input.m_Span, input.m_Span.m_Start, "Macro has not been defined");
-							continue;
-						}
-						if (macro->empty())
-						{
-							addWarning(input.m_Span, input.m_Span.m_Start, "Macro is empty, skipping include");
-							continue;
-						}
-						if ((*macro)[0].m_Class != ETokenClass::String)
-						{
-							addError(input.m_Span, input.m_Span.m_Start, "Macro requires first token to be a string (Future: Evaluate all tokens first)");
-							continue;
-						}
-						include = (*macro)[0].m_Str;
-						break;
-					}
-					}
-
-					if (!hasIncludedFile(include))
-					{
-						auto result = m_IncludeHandler(include);
-						if (result.m_Status == EIncludeStatus::Failure)
-						{
-							addError(input.m_Span, input.m_Span.m_Start, std::format("File \"{}\" not found", Utils::EscapeString(include)));
-							continue;
-						}
-
-						std::vector<Token> includedTokens = Tokenize(result.m_Source, { 0, 0, 0, m_IncludedFilenames.size() });
-						includedTokens                    = process(std::move(includedTokens), include);
-						itr                               = output.insert(itr, includedTokens.begin(), includedTokens.end());
-					}
-				}
-				else if (directive.m_Str == "define")
-				{
-					if (preprocessorTokens.size() < 2)
-					{
-						SourcePoint point = directive.m_Span.m_End;
-						++point.m_Column;
-						addError(SourceSpan { point, point }, point, "Expected identifier");
+						addError(directive.m_Span, directive.m_Span.m_Start, "Expected identifier");
 						continue;
 					}
 
-					auto& name = preprocessorTokens[1];
-					if (name.m_Class != ETokenClass::Identifier)
-					{
-						addError(name.m_Span, name.m_Span.m_Start, "Expected identifier");
-						continue;
-					}
+					bool directiveHandled = false;
 
-					if (preprocessorTokens.size() > 2)
+					if (directive.m_Str == "include")
 					{
-						bool macroFunction = false;
-						if (preprocessorTokens.size() >= 4) // Safe to say it might be a macro function
+						directiveHandled = true;
+						if (preprocessorTokens.size() < 2)
 						{
-							if (preprocessorTokens[2].m_Class == ETokenClass::Symbol && preprocessorTokens[2].m_Str == "(")
+							SourcePoint point = directive.m_Span.m_End;
+							++point.m_Column;
+							addError(SourceSpan { point, point }, point, "Expected string or identifier");
+							continue;
+						}
+
+						auto&       input = preprocessorTokens[1];
+						std::string include;
+
+						switch (input.m_Class)
+						{
+						case ETokenClass::String:
+							if (preprocessorTokens.size() > 2)
+								addWarning(SourceSpan { preprocessorTokens[2].m_Span.m_Start, preprocessorTokens.rbegin()->m_Span.m_End }, preprocessorTokens[2].m_Span.m_Start, "Unused");
+							include = input.m_Str;
+							break;
+						case ETokenClass::Identifier:
+						{
+							auto macro = getMacro(input.m_Str);
+							if (!macro)
 							{
-								std::size_t functionEnd = 3;
-								while (functionEnd < preprocessorTokens.size())
+								addError(input.m_Span, input.m_Span.m_Start, "Macro has not been defined");
+								continue;
+							}
+							if (macro->empty())
+							{
+								addWarning(input.m_Span, input.m_Span.m_Start, "Macro is empty, skipping include");
+								continue;
+							}
+							if ((*macro)[0].m_Class != ETokenClass::String)
+							{
+								addError(input.m_Span, input.m_Span.m_Start, "Macro requires first token to be a string (Future: Evaluate all tokens first)");
+								continue;
+							}
+							include = (*macro)[0].m_Str;
+							break;
+						}
+						}
+
+						if (!hasIncludedFile(include))
+						{
+							auto result = m_IncludeHandler(include);
+							if (result.m_Status == EIncludeStatus::Failure)
+							{
+								addError(input.m_Span, input.m_Span.m_Start, std::format("File \"{}\" not found", Utils::EscapeString(include)));
+								continue;
+							}
+
+							std::vector<Token> includedTokens = Tokenize(result.m_Source, { 0, 0, 0, m_IncludedFilenames.size() });
+
+							itr                     = output.erase(itr);
+							eraseDirective          = false;
+							std::size_t startOffset = itr - output.begin();
+							output.insert(itr, includedTokens.begin(), includedTokens.end());
+							itr = output.begin() + startOffset;
+							m_IncludedFilenames.emplace_back(std::move(include));
+						}
+					}
+					else if (directive.m_Str == "define")
+					{
+						directiveHandled = true;
+						if (preprocessorTokens.size() < 2)
+						{
+							SourcePoint point = directive.m_Span.m_End;
+							++point.m_Column;
+							addError(SourceSpan { point, point }, point, "Expected identifier");
+							continue;
+						}
+
+						auto& name = preprocessorTokens[1];
+						if (name.m_Class != ETokenClass::Identifier)
+						{
+							addError(name.m_Span, name.m_Span.m_Start, "Expected identifier");
+							continue;
+						}
+
+						if (preprocessorTokens.size() > 2)
+						{
+							bool macroFunction = false;
+							if (preprocessorTokens.size() >= 4) // Safe to say it might be a macro function
+							{
+								if (preprocessorTokens[2].m_Class == ETokenClass::Symbol && preprocessorTokens[2].m_Str == "(")
 								{
-									auto& token = preprocessorTokens[functionEnd];
-									if (token.m_Class == ETokenClass::Symbol && token.m_Str == ")")
-										break;
-									++functionEnd;
-								}
-								if (functionEnd == preprocessorTokens.size())
-								{
-									addError(preprocessorTokens[3].m_Span, preprocessorTokens[3].m_Span.m_Start, "Expected ')'");
-									continue;
-								}
-								macroFunction = true;
+									std::size_t functionEnd = 3;
+									while (functionEnd < preprocessorTokens.size())
+									{
+										auto& token = preprocessorTokens[functionEnd];
+										if (token.m_Class == ETokenClass::Symbol && token.m_Str == ")")
+											break;
+										++functionEnd;
+									}
+									if (functionEnd == preprocessorTokens.size())
+									{
+										addError(preprocessorTokens[3].m_Span, preprocessorTokens[3].m_Span.m_Start, "Expected ')'");
+										continue;
+									}
+									macroFunction = true;
 
-								addError(SourceSpan { preprocessorTokens[1].m_Span.m_Start, preprocessorTokens[functionEnd].m_Span.m_End }, preprocessorTokens[2].m_Span.m_Start, "Macro functions not yet implemented, sorry :>");
+									addError(SourceSpan { preprocessorTokens[1].m_Span.m_Start, preprocessorTokens[functionEnd].m_Span.m_End }, preprocessorTokens[2].m_Span.m_Start, "Macro functions not yet implemented, sorry :>");
 
-								if (hasMacro(name.m_Str))
-									addWarning(name.m_Span, name.m_Span.m_Start, "Macro already defined, redefining");
+									if (hasMacro(name.m_Str))
+										addWarning(name.m_Span, name.m_Span.m_Start, "Macro already defined, redefining");
 
-								/*std::vector<Token> valueTokens(preprocessorTokens.size() - functionEnd);
+									/*std::vector<Token> valueTokens(preprocessorTokens.size() - functionEnd);
 								for (std::size_t i = 0; i < valueTokens.size(); ++i)
 									valueTokens[i] = std::move(preprocessorTokens[i + functionEnd]);
 								addMacro(name.m_Str, std::move(valueTokens));*/
+								}
+							}
+
+							if (!macroFunction)
+							{
+								if (hasMacro(name.m_Str))
+									addWarning(name.m_Span, name.m_Span.m_Start, "Macro already defined, redefining");
+
+								std::vector<Token> valueTokens(preprocessorTokens.size() - 2);
+								for (std::size_t i = 0; i < valueTokens.size(); ++i)
+									valueTokens[i] = std::move(preprocessorTokens[i + 2]);
+								addMacro(name.m_Str, std::move(valueTokens));
 							}
 						}
-
-						if (!macroFunction)
+						else // Plain macro
 						{
 							if (hasMacro(name.m_Str))
 								addWarning(name.m_Span, name.m_Span.m_Start, "Macro already defined, redefining");
-
-							std::vector<Token> valueTokens(preprocessorTokens.size() - 2);
-							for (std::size_t i = 0; i < valueTokens.size(); ++i)
-								valueTokens[i] = std::move(preprocessorTokens[i + 2]);
-							addMacro(name.m_Str, std::move(valueTokens));
+							addMacro(name.m_Str);
 						}
 					}
-					else // Plain macro
+					else if (directive.m_Str == "undefine")
 					{
-						if (hasMacro(name.m_Str))
-							addWarning(name.m_Span, name.m_Span.m_Start, "Macro already defined, redefining");
-						addMacro(name.m_Str);
+						directiveHandled = true;
+						if (preprocessorTokens.size() < 2)
+						{
+							SourcePoint point = directive.m_Span.m_End;
+							++point.m_Column;
+							addError(SourceSpan { point, point }, point, "Expected identifier");
+							continue;
+						}
+						else if (preprocessorTokens.size() > 2)
+						{
+							addWarning(SourceSpan { preprocessorTokens[2].m_Span.m_Start, preprocessorTokens.rbegin()->m_Span.m_End }, preprocessorTokens[2].m_Span.m_Start, "Unused");
+						}
+
+						auto& name = preprocessorTokens[1];
+						if (name.m_Class != ETokenClass::Identifier)
+						{
+							addError(name.m_Span, name.m_Span.m_Start, "Expected identifier");
+							continue;
+						}
+
+						removeMacro(name.m_Str);
 					}
-				}
-				else if (directive.m_Str == "undefine")
-				{
-					if (preprocessorTokens.size() < 2)
+					else if (directive.m_Str == "error")
 					{
-						SourcePoint point = directive.m_Span.m_End;
-						++point.m_Column;
-						addError(SourceSpan { point, point }, point, "Expected string or identifier");
+						directiveHandled = true;
+						if (preprocessorTokens.size() < 2)
+						{
+							SourcePoint point = directive.m_Span.m_End;
+							++point.m_Column;
+							addError(SourceSpan { point, point }, point, "Expected string or identifier");
+							continue;
+						}
+						else if (preprocessorTokens.size() > 2)
+						{
+							addWarning(SourceSpan { preprocessorTokens[2].m_Span.m_Start, preprocessorTokens.rbegin()->m_Span.m_End }, preprocessorTokens[2].m_Span.m_Start, "Unused");
+						}
+
+						auto&       input = preprocessorTokens[1];
+						std::string error;
+
+						switch (input.m_Class)
+						{
+						case ETokenClass::String:
+							error = input.m_Str;
+							break;
+						case ETokenClass::Identifier:
+						{
+							auto macro = getMacro(input.m_Str);
+							if (!macro)
+							{
+								addError(input.m_Span, input.m_Span.m_Start, "Macro has not been defined");
+								continue;
+							}
+							if (macro->empty())
+							{
+								addWarning(input.m_Span, input.m_Span.m_Start, "Macro is empty, skipping include");
+								continue;
+							}
+							if ((*macro)[0].m_Class != ETokenClass::String)
+							{
+								addError(input.m_Span, input.m_Span.m_Start, "Macro requires first token to be a string (Future: Evaluate all tokens first)");
+								continue;
+							}
+							error = (*macro)[0].m_Str;
+							break;
+						}
+						}
+
+						addError(preprocessorSpan, directive.m_Span.m_Start, std::move(error));
+					}
+					else if (directive.m_Str == "warn")
+					{
+						directiveHandled = true;
+						if (preprocessorTokens.size() < 2)
+						{
+							SourcePoint point = directive.m_Span.m_End;
+							++point.m_Column;
+							addError(SourceSpan { point, point }, point, "Expected string or identifier");
+							continue;
+						}
+						else if (preprocessorTokens.size() > 2)
+						{
+							addWarning(SourceSpan { preprocessorTokens[2].m_Span.m_Start, preprocessorTokens.rbegin()->m_Span.m_End }, preprocessorTokens[2].m_Span.m_Start, "Unused");
+						}
+
+						auto&       input = preprocessorTokens[1];
+						std::string warn;
+
+						switch (input.m_Class)
+						{
+						case ETokenClass::String:
+							warn = input.m_Str;
+							break;
+						case ETokenClass::Identifier:
+						{
+							auto macro = getMacro(input.m_Str);
+							if (!macro)
+							{
+								addError(input.m_Span, input.m_Span.m_Start, "Macro has not been defined");
+								continue;
+							}
+							if (macro->empty())
+							{
+								addWarning(input.m_Span, input.m_Span.m_Start, "Macro is empty, skipping include");
+								continue;
+							}
+							if ((*macro)[0].m_Class != ETokenClass::String)
+							{
+								addError(input.m_Span, input.m_Span.m_Start, "Macro requires first token to be a string (Future: Evaluate all tokens first)");
+								continue;
+							}
+							warn = (*macro)[0].m_Str;
+							break;
+						}
+						}
+
+						addWarning(preprocessorSpan, directive.m_Span.m_Start, std::move(warn));
+					}
+					else if (directive.m_Str == "elif")
+					{
+						directiveHandled = true;
+						addError(directive.m_Span, directive.m_Span.m_Start, "Unexpected directive");
 						continue;
 					}
-					else if (preprocessorTokens.size() > 2)
+					else if (directive.m_Str == "elifdef")
 					{
-						addWarning(SourceSpan { preprocessorTokens[2].m_Span.m_Start, preprocessorTokens.rbegin()->m_Span.m_End }, preprocessorTokens[2].m_Span.m_Start, "Unused");
-					}
-
-					auto& name = preprocessorTokens[1];
-					if (name.m_Class != ETokenClass::Identifier)
-					{
-						addError(name.m_Span, name.m_Span.m_Start, "Expected identifier");
+						directiveHandled = true;
+						addError(directive.m_Span, directive.m_Span.m_Start, "Unexpected directive");
 						continue;
 					}
-
-					removeMacro(name.m_Str);
-				}
-				else if (directive.m_Str == "error")
-				{
-					if (preprocessorTokens.size() < 2)
+					else if (directive.m_Str == "elifndef")
 					{
-						SourcePoint point = directive.m_Span.m_End;
-						++point.m_Column;
-						addError(SourceSpan { point, point }, point, "Expected string or identifier");
+						directiveHandled = true;
+						addError(directive.m_Span, directive.m_Span.m_Start, "Unexpected directive");
 						continue;
 					}
-					else if (preprocessorTokens.size() > 2)
+					else if (directive.m_Str == "else")
 					{
-						addWarning(SourceSpan { preprocessorTokens[2].m_Span.m_Start, preprocessorTokens.rbegin()->m_Span.m_End }, preprocessorTokens[2].m_Span.m_Start, "Unused");
-					}
-
-					auto&       input = preprocessorTokens[1];
-					std::string error;
-
-					switch (input.m_Class)
-					{
-					case ETokenClass::String:
-						error = input.m_Str;
-						break;
-					case ETokenClass::Identifier:
-					{
-						auto macro = getMacro(input.m_Str);
-						if (!macro)
-						{
-							addError(input.m_Span, input.m_Span.m_Start, "Macro has not been defined");
-							continue;
-						}
-						if (macro->empty())
-						{
-							addWarning(input.m_Span, input.m_Span.m_Start, "Macro is empty, skipping include");
-							continue;
-						}
-						if ((*macro)[0].m_Class != ETokenClass::String)
-						{
-							addError(input.m_Span, input.m_Span.m_Start, "Macro requires first token to be a string (Future: Evaluate all tokens first)");
-							continue;
-						}
-						error = (*macro)[0].m_Str;
-						break;
-					}
-					}
-
-					addError(preprocessorSpan, directive.m_Span.m_Start, std::move(error));
-				}
-				else if (directive.m_Str == "warn")
-				{
-					if (preprocessorTokens.size() < 2)
-					{
-						SourcePoint point = directive.m_Span.m_End;
-						++point.m_Column;
-						addError(SourceSpan { point, point }, point, "Expected string or identifier");
+						directiveHandled = true;
+						addError(directive.m_Span, directive.m_Span.m_Start, "Unexpected directive");
 						continue;
 					}
-					else if (preprocessorTokens.size() > 2)
+					else if (directive.m_Str == "endif")
 					{
-						addWarning(SourceSpan { preprocessorTokens[2].m_Span.m_Start, preprocessorTokens.rbegin()->m_Span.m_End }, preprocessorTokens[2].m_Span.m_Start, "Unused");
+						directiveHandled = true;
+						addError(directive.m_Span, directive.m_Span.m_Start, "Unexpected directive");
+						continue;
+					}
+					else if (directive.m_Str == "if" ||
+					         directive.m_Str == "ifdef" ||
+					         directive.m_Str == "ifndef")
+					{
+						eraseDirective          = false;
+						directiveHandled        = true;
+						std::size_t startOffset = itr - output.begin();
+						std::size_t state       = 0;
+						auto        start       = itr;
+						auto        end         = itr;
+						while (state < 3)
+						{
+							++end;
+							while (end != output.end())
+							{
+								if (end->m_Class == ETokenClass::Preprocessor)
+								{
+									auto preprocessorSpan2 = end->m_Span;
+
+									std::vector<Token> preprocessorTokens2 = Tokenize(end->m_Str.substr(1), preprocessorSpan2.m_Start);
+									if (preprocessorTokens2.empty() ||
+									    preprocessorTokens2[0].m_Class != ETokenClass::Identifier)
+									{
+										++end;
+										continue;
+									}
+
+									auto& directive2 = preprocessorTokens2[0].m_Str;
+									if (state == 0)
+									{
+										if (directive2 == "elif" ||
+										    directive2 == "elifdef" ||
+										    directive2 == "elifndef" ||
+										    directive2 == "else" ||
+										    directive2 == "endif")
+											break;
+									}
+									else if (state == 1 ||
+									         state == 2)
+									{
+										if (directive2 == "endif")
+											break;
+									}
+
+									++end;
+								}
+							}
+							if (end == output.end())
+							{
+								SourcePoint point = output.rbegin()->m_Span.m_End;
+								++point.m_Line;
+								point.m_Column = 0;
+								addWarning(SourceSpan { point, point }, point, state == 0 ? "Expected \"#elif\", \"#elifdef\", \"#elifndef\", \"#else\" or \"#endif\" directive" : (state == 1 ? "Expected \"#else\" or \"#endif\" directive" : "Expected \"#endif\" directive"));
+								continue;
+							}
+
+							bool enable = false;
+
+							do
+							{
+								auto               preprocessorSpanStart   = start->m_Span;
+								std::vector<Token> preprocessorTokensStart = Tokenize(start->m_Str.substr(1), preprocessorSpanStart.m_Start);
+								if (preprocessorTokensStart.empty() ||
+								    preprocessorTokensStart[0].m_Class != ETokenClass::Identifier)
+								{
+									addError(preprocessorSpanStart, preprocessorSpanStart.m_Start, "Expected Identifier");
+									continue;
+								}
+
+								auto& directiveStart = preprocessorTokensStart[0];
+
+								if (directiveStart.m_Str == "if" ||
+								    directiveStart.m_Str == "elif")
+								{
+									if (preprocessorTokensStart.size() < 2)
+									{
+										SourcePoint point = directiveStart.m_Span.m_End;
+										++point.m_Column;
+										addError(SourceSpan { point, point }, point, "Expected boolean statement");
+										continue;
+									}
+
+									auto& statement = preprocessorTokensStart[1];
+									if (statement.m_Class != ETokenClass::Identifier &&
+									    statement.m_Class != ETokenClass::Integer &&
+									    statement.m_Class != ETokenClass::BinaryInteger &&
+									    statement.m_Class != ETokenClass::OctalInteger &&
+									    statement.m_Class != ETokenClass::HexInteger)
+									{
+										addError(statement.m_Span, statement.m_Span.m_Start, "Expected boolean statement");
+										continue;
+									}
+
+									switch (statement.m_Class)
+									{
+									case ETokenClass::Identifier:
+										if (statement.m_Str == "false")
+											enable = false;
+										else if (statement.m_Str == "true")
+											enable = true;
+										else
+											addError(statement.m_Span, statement.m_Span.m_Start, "Expected boolean statement");
+										break;
+									case ETokenClass::Integer:
+									{
+										char*        endStr;
+										std::int64_t integer = std::strtoll(statement.m_Str.c_str(), &endStr, 10);
+										enable               = integer != 0;
+										break;
+									}
+									case ETokenClass::BinaryInteger:
+									{
+										char*        endStr;
+										std::int64_t integer = std::strtoll(statement.m_Str.c_str() + 2, &endStr, 2);
+										enable               = integer != 0;
+										break;
+									}
+									case ETokenClass::OctalInteger:
+									{
+										char*        endStr;
+										std::int64_t integer = std::strtoll(statement.m_Str.c_str() + 2, &endStr, 8);
+										enable               = integer != 0;
+										break;
+									}
+									case ETokenClass::HexInteger:
+									{
+										char*        endStr;
+										std::int64_t integer = std::strtoll(statement.m_Str.c_str() + 2, &endStr, 16);
+										enable               = integer != 0;
+										break;
+									}
+									}
+								}
+								else if (directiveStart.m_Str == "ifdef" ||
+								         directiveStart.m_Str == "elifdef")
+								{
+									if (preprocessorTokensStart.size() < 2)
+									{
+										SourcePoint point = directiveStart.m_Span.m_End;
+										++point.m_Column;
+										addError(SourceSpan { point, point }, point, "Expected identifier");
+										continue;
+									}
+									else if (preprocessorTokensStart.size() > 2)
+									{
+										addWarning(SourceSpan { preprocessorTokensStart[2].m_Span.m_Start, preprocessorTokensStart.rbegin()->m_Span.m_End }, preprocessorTokensStart[2].m_Span.m_Start, "Unused");
+									}
+
+									auto& name = preprocessorTokensStart[1];
+									if (name.m_Class != ETokenClass::Identifier)
+									{
+										addError(name.m_Span, name.m_Span.m_Start, "Expected identifier");
+										continue;
+									}
+
+									enable = hasMacro(name.m_Str);
+								}
+								else if (directiveStart.m_Str == "ifndef" ||
+								         directiveStart.m_Str == "elifndef")
+								{
+									if (preprocessorTokensStart.size() < 2)
+									{
+										SourcePoint point = directiveStart.m_Span.m_End;
+										++point.m_Column;
+										addError(SourceSpan { point, point }, point, "Expected identifier");
+										continue;
+									}
+									else if (preprocessorTokensStart.size() > 2)
+									{
+										addWarning(SourceSpan { preprocessorTokensStart[2].m_Span.m_Start, preprocessorTokensStart.rbegin()->m_Span.m_End }, preprocessorTokensStart[2].m_Span.m_Start, "Unused");
+									}
+
+									auto& name = preprocessorTokensStart[1];
+									if (name.m_Class != ETokenClass::Identifier)
+									{
+										addError(name.m_Span, name.m_Span.m_Start, "Expected identifier");
+										continue;
+									}
+
+									enable = !hasMacro(name.m_Str);
+								}
+								else if (directiveStart.m_Str == "else")
+								{
+									enable = state != 2;
+								}
+							} while (false);
+
+							do
+							{
+								auto               preprocessorSpanEnd   = end->m_Span;
+								std::vector<Token> preprocessorTokensEnd = Tokenize(end->m_Str.substr(1), preprocessorSpanEnd.m_Start);
+								if (preprocessorTokensEnd.empty() ||
+								    preprocessorTokensEnd[0].m_Class != ETokenClass::Identifier)
+								{
+									addError(preprocessorSpanEnd, preprocessorSpanEnd.m_Start, "Expected Identifier");
+									continue;
+								}
+
+								auto& directiveEnd = preprocessorTokensEnd[0];
+								if (directiveEnd.m_Str == "else")
+									++state;
+								else if (directiveEnd.m_Str == "endif")
+									state = 3;
+							} while (false);
+
+							if (enable)
+							{
+								if (state < 2)
+									state = 2;
+								std::size_t offset = end - output.begin();
+								output.erase(start);
+								end = output.begin() + offset - 1;
+								if (state >= 3)
+									end = output.erase(end);
+								start = end;
+							}
+							else
+							{
+								end = output.erase(start, end);
+								if (state >= 3)
+									end = output.erase(end);
+								start = end;
+							}
+						}
+						itr = output.begin() + startOffset;
 					}
 
-					auto&       input = preprocessorTokens[1];
-					std::string warn;
+					if (!directiveHandled)
+						addWarning(directive.m_Span, directive.m_Span.m_Start, std::format("Unknown preprocessor directive \"{}\"", Utils::EscapeString(directive.m_Str)));
+				} while (false);
 
-					switch (input.m_Class)
-					{
-					case ETokenClass::String:
-						warn = input.m_Str;
-						break;
-					case ETokenClass::Identifier:
-					{
-						auto macro = getMacro(input.m_Str);
-						if (!macro)
-						{
-							addError(input.m_Span, input.m_Span.m_Start, "Macro has not been defined");
-							continue;
-						}
-						if (macro->empty())
-						{
-							addWarning(input.m_Span, input.m_Span.m_Start, "Macro is empty, skipping include");
-							continue;
-						}
-						if ((*macro)[0].m_Class != ETokenClass::String)
-						{
-							addError(input.m_Span, input.m_Span.m_Start, "Macro requires first token to be a string (Future: Evaluate all tokens first)");
-							continue;
-						}
-						warn = (*macro)[0].m_Str;
-						break;
-					}
-					}
-
-					addWarning(preprocessorSpan, directive.m_Span.m_Start, std::move(warn));
-				}
-				else
-				{
-					addWarning(directive.m_Span, directive.m_Span.m_Start, std::format("Unknown preprocessor directive \"{}\"", Utils::EscapeString(directive.m_Str)));
-				}
+				if (eraseDirective)
+					itr = output.erase(itr);
 			}
 			else
 			{
