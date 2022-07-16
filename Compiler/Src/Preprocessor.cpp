@@ -18,7 +18,13 @@ namespace Frertex
 
 		for (auto itr = output.begin(); itr != output.end();)
 		{
-			if (itr->m_Class == ETokenClass::Preprocessor)
+			if (itr->m_Class == ETokenClass::Comment ||
+			    itr->m_Class == ETokenClass::MultilineComment)
+			{
+				// Remove comments from the preprocessed tokens
+				itr = output.erase(itr);
+			}
+			else if (itr->m_Class == ETokenClass::Preprocessor)
 			{
 				auto preprocessorSpan = itr->m_Span;
 

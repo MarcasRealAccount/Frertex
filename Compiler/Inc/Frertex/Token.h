@@ -32,7 +32,9 @@ namespace Frertex
 		Float,
 		HexFloat,
 		Symbol,
-		Preprocessor
+		Preprocessor,
+		Comment,
+		MultilineComment
 	};
 
 	struct SourcePoint

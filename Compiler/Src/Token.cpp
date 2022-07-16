@@ -40,6 +40,8 @@ namespace Frertex
 		case ETokenClass::HexFloat: return "HexFloat";
 		case ETokenClass::Symbol: return "Symbol";
 		case ETokenClass::Preprocessor: return "Preprocessor";
+		case ETokenClass::Comment: return "Comment";
+		case ETokenClass::MultilineComment: return "MultilineComment";
 		default: return "Unknown";
 		}
 	}
@@ -47,7 +49,7 @@ namespace Frertex
 	std::ostream& operator<<(std::ostream& stream, SourcePoint point)
 	{
 		std::ostringstream str;
-		str << point.m_Index << '-' << (point.m_Line + 1) << ':' << (point.m_Column + 1);
+		str << (point.m_Line + 1) << ':' << (point.m_Column + 1);
 		return stream << str.str();
 	}
 

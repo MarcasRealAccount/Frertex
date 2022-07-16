@@ -1,4 +1,4 @@
-#define TEST "Other.frer"
+/*#define TEST "Other.frer"
 #include TEST
 #define TEST2() funny
 #define TEST3 notAString
@@ -7,14 +7,14 @@
 #include TEST4
 #define TEST5"Hehe.frer"
 #undefine TEST5
-#include TEST5
+#include TEST5*/
 
 void Vert(in float4 inPosition,
           in float4 inNormal,
           out float4 outPosition : Position,
           out float2 outUV) : VertexShader
 {
-    outPosition = float4(inPosition.xyz, 1.0f);
+    //outPosition = float4(inPosition.xyz, 1.0f);
     outUV       = float2(inPosition.w, outPosition.w);
 }
 

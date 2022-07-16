@@ -8,14 +8,15 @@ namespace Frertex
 	{
 		std::vector<Token> tokens;
 
-		std::size_t     tokenLength  = 0;
-		SourcePoint     tokenStart   = start;
-		SourcePoint     tokenEnd     = start;
-		SourcePoint     current      = start;
-		ECharacterClass currentClass = ECharacterClass::Unknown;
-		ETokenClass     tokenClass   = ETokenClass::Unknown;
-		bool            escaped      = false;
-		bool            stringEnded  = false;
+		std::size_t     tokenLength       = 0;
+		SourcePoint     tokenStart        = start;
+		SourcePoint     tokenEnd          = start;
+		SourcePoint     current           = start;
+		ECharacterClass currentClass      = ECharacterClass::Unknown;
+		ETokenClass     tokenClass        = ETokenClass::Unknown;
+		bool            escaped           = false;
+		bool            stringEnded       = false;
+		std::size_t     multilineCommentI = 0;
 		while (current.m_Index < (str.size() + start.m_Index))
 		{
 			char c = str[current.m_Index - start.m_Index];
@@ -184,6 +185,37 @@ namespace Frertex
 				if (characterClass != ECharacterClass::Newline)
 					addToken = false;
 			}
+			else if (tokenClass == ETokenClass::Comment)
+			{
+				if (tokenLength == 1 && characterClass == ECharacterClass::Symbol && c == '*')
+				{
+					tokenClass        = ETokenClass::MultilineComment;
+					multilineCommentI = 2;
+					addToken          = false;
+				}
+				else if (characterClass != ECharacterClass::Newline)
+				{
+					addToken = false;
+				}
+			}
+			else if (tokenClass == ETokenClass::MultilineComment)
+			{
+				addToken = false;
+				switch (multilineCommentI)
+				{
+				case 0:
+					addToken = true;
+					break;
+				case 1:
+					if (characterClass == ECharacterClass::Symbol && c == '/')
+						--multilineCommentI;
+					break;
+				case 2:
+					if (characterClass == ECharacterClass::Symbol && c == '*')
+						--multilineCommentI;
+					break;
+				}
+			}
 
 			if (addToken)
 			{
@@ -216,7 +248,7 @@ namespace Frertex
 					tokenClass = ETokenClass::Integer;
 					break;
 				case ECharacterClass::Symbol:
-					tokenClass = (c == '#' && current.m_Column == 0) ? ETokenClass::Preprocessor : (c == '"' ? ETokenClass::String : ETokenClass::Symbol);
+					tokenClass = (c == '#' && current.m_Column == 0) ? ETokenClass::Preprocessor : (c == '"' ? ETokenClass::String : (c == '/' ? ETokenClass::Comment : ETokenClass::Symbol));
 					break;
 				case ECharacterClass::Whitespace:
 				case ECharacterClass::Newline:
