@@ -1,45 +1,18 @@
-/*#define TEST "Other.frer"
-#include TEST
-#define TEST2() funny
-#define TEST3 notAString
-#include TEST3
-#define TEST4
-#include TEST4
-#define TEST5"Hehe.frer"
-#undefine TEST5
-#include TEST5*/
-#define Hehe "A macro based message"
-#ifndef Hehe
-#error "Oh shit"
-#error Hehe
-#warn "Oh shit"
-#warn Hehe
-#else
-#error "Hehe was defined"
-#endif
+#include "Other.frer"
 
-#line 5
-#if true
-#warn "Cool"
-#else
-#error "Bad"
-#endif
-#line 68 "ProfoundFile.frer"
-#ifdef Hehe
-#include Hehe
-#endif
-
+[[VertexShader]]
 void Vert(in float4 inPosition,
           in float4 inNormal,
-          out float4 outPosition : Position,
-          out float2 outUV) : VertexShader
+          [[Position]] out float4 outPosition,
+          out float2 outUV)
 {
-    //outPosition = float4(inPosition.xyz, 1.0f);
+    outPosition = float4(inPosition.xyz, 1.0f);
     outUV       = float2(inPosition.w, outPosition.w);
 }
 
+[[FragmentShader]]
 void Frag(in float2 inUV,
-          out float4 outColor) : FragmentShader
+          out float4 outColor)
 {
-    outColor = float4(inUV, 0.0f, 1.0h);
+    outColor = float4(inUV, 0.0f, 1.0f);
 }

@@ -13,6 +13,8 @@ namespace Frertex
 
 	std::vector<Token> Preprocessor::process(Utils::CopyMovable<std::vector<Token>>&& tokens, std::string_view filename)
 	{
+		// TODO(MarcasRealAccount): Implement macro replacement in other tokens ;)
+
 		m_IncludedFilenames.emplace_back(filename);
 
 		std::vector<Token> output = tokens.get();
@@ -379,39 +381,39 @@ namespace Frertex
 
 						if (preprocessorTokens.size() > 2)
 						{
-							auto& filename = preprocessorTokens[2];
+							auto& filenameToken = preprocessorTokens[2];
 
 							std::string_view filenameStr;
-							switch (filename.m_Class)
+							switch (filenameToken.m_Class)
 							{
 							case ETokenClass::String:
 								if (preprocessorTokens.size() > 3)
 									addWarning(SourceSpan { preprocessorTokens[3].m_Span.m_Start, preprocessorTokens.rbegin()->m_Span.m_End }, preprocessorTokens[3].m_Span.m_Start, "Unused");
-								filenameStr = filename.m_Str;
+								filenameStr = filenameToken.m_Str;
 								break;
 							case ETokenClass::Identifier:
 							{
-								auto macro = getMacro(filename.m_Str);
+								auto macro = getMacro(filenameToken.m_Str);
 								if (!macro)
 								{
-									addError(filename.m_Span, filename.m_Span.m_Start, "Macro has not been defined");
+									addError(filenameToken.m_Span, filenameToken.m_Span.m_Start, "Macro has not been defined");
 									continue;
 								}
 								if (macro->empty())
 								{
-									addWarning(filename.m_Span, filename.m_Span.m_Start, "Macro is empty, skipping include");
+									addWarning(filenameToken.m_Span, filenameToken.m_Span.m_Start, "Macro is empty, skipping include");
 									continue;
 								}
 								if ((*macro)[0].m_Class != ETokenClass::String)
 								{
-									addError(filename.m_Span, filename.m_Span.m_Start, "Macro requires first token to be a string (Future: Evaluate all tokens first)");
+									addError(filenameToken.m_Span, filenameToken.m_Span.m_Start, "Macro requires first token to be a string (Future: Evaluate all tokens first)");
 									continue;
 								}
 								filenameStr = (*macro)[0].m_Str;
 								break;
 							}
 							default:
-								addError(filename.m_Span, filename.m_Span.m_Start, "Expected string or identifier");
+								addError(filenameToken.m_Span, filenameToken.m_Span.m_Start, "Expected string or identifier");
 								continue;
 							}
 
