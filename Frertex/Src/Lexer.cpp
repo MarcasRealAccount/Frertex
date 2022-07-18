@@ -8,6 +8,7 @@ namespace Frertex
 		{
 		case EASTNodeType::Unknown: return "Unknown";
 		case EASTNodeType::TranslationUnit: return "TranslationUnit";
+		case EASTNodeType::Operator: return "Operator";
 		case EASTNodeType::TypeQualifier: return "TypeQualifier";
 		case EASTNodeType::TypeQualifiers: return "TypeQualifiers";
 		case EASTNodeType::Identifier: return "Identifier";
@@ -16,8 +17,15 @@ namespace Frertex
 		case EASTNodeType::Attributes: return "Attributes";
 		case EASTNodeType::Argument: return "Argument";
 		case EASTNodeType::Arguments: return "Arguments";
-		case EASTNodeType::StatementBlock: return "StatementBlock";
-		case EASTNodeType::Function: return "Function";
+		case EASTNodeType::BracedInitList: return "BracedInitList";
+		case EASTNodeType::AssignmentExpression: return "AssignmentExpression";
+		case EASTNodeType::ExpressionStatement: return "ExpressionStatement";
+		case EASTNodeType::CompoundStatement: return "CompoundStatement";
+		case EASTNodeType::ReturnStatement: return "ReturnStatement";
+		case EASTNodeType::Statement: return "Statement";
+		case EASTNodeType::Statements: return "Statements";
+		case EASTNodeType::FunctionDeclaration: return "FunctionDeclaration";
+		case EASTNodeType::Declaration: return "Declaration";
 		default: return "Unknown";
 		}
 	}
@@ -32,7 +40,7 @@ namespace Frertex
 		std::vector<Token> input = tokens.get();
 
 		AST  ast;
-		auto result = lexTranslationUnit(input, 0);
+		auto result = lexTranslationUnit(input, 0, input.size() - 1);
 		ast.setRoot(std::move(result.m_Node));
 		return ast;
 	}
@@ -47,14 +55,14 @@ namespace Frertex
 		m_Messages.emplace_back(EMessageType::Error, span, point, message.get());
 	}
 
-	LexResult Lexer::lexTranslationUnit(std::vector<Token>& tokens, std::size_t offset)
+	LexResult Lexer::lexTranslationUnit(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		std::size_t          usedTokens = 0;
 		std::vector<ASTNode> nodes;
 
-		while (offset + usedTokens < tokens.size())
+		while (start + usedTokens <= end)
 		{
-			auto result = lexFunction(tokens, offset + usedTokens);
+			auto result = lexDeclaration(tokens, start + usedTokens, end);
 			if (result.m_UsedTokens == 0)
 				break;
 			usedTokens += result.m_UsedTokens;
@@ -64,11 +72,14 @@ namespace Frertex
 		return { usedTokens, { EASTNodeType::TranslationUnit, Token {}, std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexTypeQualifier(std::vector<Token>& tokens, std::size_t offset)
+	LexResult Lexer::lexTypeQualifier(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
-		Token& token = tokens[offset];
+		if (start > end)
+			return {};
+
+		Token& token = tokens[start];
 		if (token.m_Class != ETokenClass::Identifier)
-			return { 0, {} };
+			return {};
 
 		auto& str         = token.m_Str;
 		bool  isQualifier = false;
@@ -78,19 +89,22 @@ namespace Frertex
 			isQualifier = true;
 
 		if (isQualifier)
-			return { 1, { EASTNodeType::TypeQualifier, token } };
+			return { 1, { EASTNodeType::TypeQualifier, Token { token } } };
 		else
-			return { 0, {} };
+			return {};
 	}
 
-	LexResult Lexer::lexTypeQualifiers(std::vector<Token>& tokens, std::size_t offset)
+	LexResult Lexer::lexTypeQualifiers(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
+		if (start > end)
+			return { 0, { EASTNodeType::TypeQualifiers } };
+
 		std::size_t          usedTokens = 0;
 		std::vector<ASTNode> nodes;
 
 		while (true)
 		{
-			auto result = lexTypeQualifier(tokens, offset + usedTokens);
+			auto result = lexTypeQualifier(tokens, start + usedTokens, end);
 			if (result.m_UsedTokens == 0)
 				break;
 			usedTokens += result.m_UsedTokens;
@@ -100,61 +114,73 @@ namespace Frertex
 		return { usedTokens, { EASTNodeType::TypeQualifiers, Token {}, std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexIdentifier(std::vector<Token>& tokens, std::size_t offset)
+	LexResult Lexer::lexIdentifier(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
-		Token& token = tokens[offset];
+		if (start > end)
+			return {};
+
+		Token& token = tokens[start];
 		if (token.m_Class != ETokenClass::Identifier)
-			return { 0, {} };
-		return { 1, { EASTNodeType::Identifier, token } };
+			return {};
+		return { 1, { EASTNodeType::Identifier, Token { token } } };
 	}
 
-	LexResult Lexer::lexTypename(std::vector<Token>& tokens, std::size_t offset)
+	LexResult Lexer::lexTypename(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
+		if (start > end)
+			return {};
+
 		std::size_t          usedTokens = 0;
 		std::vector<ASTNode> nodes;
 
-		auto result = lexTypeQualifiers(tokens, offset + usedTokens);
+		auto result = lexTypeQualifiers(tokens, start + usedTokens, end);
 		usedTokens += result.m_UsedTokens;
 		nodes.emplace_back(std::move(result.m_Node));
 
-		result = lexIdentifier(tokens, offset + usedTokens);
+		result = lexIdentifier(tokens, start + usedTokens, end);
 		if (result.m_UsedTokens == 0)
-			return { 0, {} };
+			return {};
 		usedTokens += result.m_UsedTokens;
 		nodes.emplace_back(std::move(result.m_Node));
 
 		return { usedTokens, { EASTNodeType::Typename, Token {}, std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexAttribute(std::vector<Token>& tokens, std::size_t offset)
+	LexResult Lexer::lexAttribute(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
-		auto result = lexIdentifier(tokens, offset);
+		if (start > end)
+			return {};
+
+		auto result = lexIdentifier(tokens, start, end);
 		if (result.m_UsedTokens == 0)
-			return { 0, {} };
+			return {};
 		return { result.m_UsedTokens, { EASTNodeType::Attribute, Token {}, { std::move(result.m_Node) } } };
 	}
 
-	LexResult Lexer::lexAttributes(std::vector<Token>& tokens, std::size_t offset)
+	LexResult Lexer::lexAttributes(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
+		if (start > end)
+			return { 0, { EASTNodeType::Attributes } };
+
 		std::size_t          usedTokens = 0;
 		std::vector<ASTNode> nodes;
 
 		{
 			// Opening
-			Token& a = tokens[offset + usedTokens];
+			Token& a = tokens[start + usedTokens];
 			if (a.m_Class != ETokenClass::Symbol || a.m_Str != "[")
 				return { 0, { EASTNodeType::Attributes } };
 			++usedTokens;
-			Token& b = tokens[offset + usedTokens];
+			Token& b = tokens[start + usedTokens];
 			if (b.m_Class != ETokenClass::Symbol || b.m_Str != "[")
 				return { 0, { EASTNodeType::Attributes } };
 			++usedTokens;
 		}
-		std::size_t attributesEnd = offset + usedTokens;
+		std::size_t attributesEnd = start + usedTokens;
 		{
 			// Closing
 			std::uint64_t count = 0;
-			while (attributesEnd < tokens.size())
+			while (attributesEnd <= end)
 			{
 				Token& token = tokens[attributesEnd];
 				if (token.m_Class != ETokenClass::Symbol || token.m_Str != "]")
@@ -169,60 +195,68 @@ namespace Frertex
 					break;
 			}
 
-			if (attributesEnd >= tokens.size() - 1)
+			if (attributesEnd >= end)
 				return { 0, { EASTNodeType::Attributes } };
 		}
 
-		while (offset + usedTokens < attributesEnd - 2)
+		while (start + usedTokens < attributesEnd - 2)
 		{
-			auto result = lexAttribute(tokens, offset + usedTokens);
+			auto result = lexAttribute(tokens, start + usedTokens, attributesEnd - 2);
 			if (result.m_UsedTokens == 0)
 				return { 0, { EASTNodeType::Attributes } };
 			usedTokens += result.m_UsedTokens;
 			nodes.emplace_back(std::move(result.m_Node));
 		}
 
-		return { attributesEnd - offset, { EASTNodeType::Attributes, Token {}, std::move(nodes) } };
+		return { attributesEnd - start, { EASTNodeType::Attributes, Token {}, std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexArgument(std::vector<Token>& tokens, std::size_t offset)
+	LexResult Lexer::lexArgument(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
+		if (start > end)
+			return {};
+
 		std::size_t          usedTokens = 0;
 		std::vector<ASTNode> nodes;
 
-		auto result = lexAttributes(tokens, offset + usedTokens);
+		auto result = lexAttributes(tokens, start + usedTokens, end);
 		usedTokens += result.m_UsedTokens;
 		nodes.emplace_back(std::move(result.m_Node));
 
-		result = lexTypename(tokens, offset + usedTokens);
+		result = lexTypename(tokens, start + usedTokens, end);
 		if (result.m_UsedTokens == 0)
-			return { 0, {} };
+			return {};
 		usedTokens += result.m_UsedTokens;
 		nodes.emplace_back(std::move(result.m_Node));
 
-		result = lexIdentifier(tokens, offset + usedTokens);
+		result = lexIdentifier(tokens, start + usedTokens, end);
 		if (result.m_UsedTokens == 0)
-			return { 0, {} };
+			return {};
 		usedTokens += result.m_UsedTokens;
 		nodes.emplace_back(std::move(result.m_Node));
 
 		return { usedTokens, { EASTNodeType::Argument, Token {}, std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexArguments(std::vector<Token>& tokens, std::size_t offset)
+	LexResult Lexer::lexArguments(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
+		if (start > end)
+			return {};
+
 		std::size_t          usedTokens = 0;
 		std::vector<ASTNode> nodes;
 
 		while (true)
 		{
-			auto result = lexArgument(tokens, offset + usedTokens);
+			auto result = lexArgument(tokens, start + usedTokens, end);
 			if (result.m_UsedTokens == 0)
 				break;
 			usedTokens += result.m_UsedTokens;
 			nodes.emplace_back(std::move(result.m_Node));
+			if (start + usedTokens > end)
+				break;
 
-			auto& token = tokens[offset + usedTokens];
+			auto& token = tokens[start + usedTokens];
 			if (token.m_Class != ETokenClass::Symbol || token.m_Str != ",")
 				break;
 			++usedTokens;
@@ -231,23 +265,171 @@ namespace Frertex
 		return { usedTokens, { EASTNodeType::Arguments, Token {}, std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexStatementBlock(std::vector<Token>& tokens, std::size_t offset)
+	LexResult Lexer::lexBracedInitList(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
+		if (start > end)
+			return {};
+
 		std::size_t          usedTokens = 0;
 		std::vector<ASTNode> nodes;
 
 		{
 			// Opening
-			Token& token = tokens[offset + usedTokens];
+			Token& token = tokens[start + usedTokens];
 			if (token.m_Class != ETokenClass::Symbol && token.m_Str != "{")
-				return { 0, {} };
+				return {};
 			++usedTokens;
 		}
-		std::size_t blockEnd = offset + usedTokens;
+		std::size_t listEnd = start + usedTokens;
 		{
 			// Closing
 			std::uint64_t count = 1;
-			while (blockEnd < tokens.size())
+			while (listEnd < end)
+			{
+				Token& token = tokens[listEnd];
+				if (token.m_Class == ETokenClass::Symbol)
+				{
+					if (token.m_Str == "{")
+						++count;
+					else if (token.m_Str == "}")
+						--count;
+					++listEnd;
+				}
+				else
+				{
+					++listEnd;
+					continue;
+				}
+				if (count == 0)
+					break;
+			}
+			if (count != 0)
+				return {};
+		}
+
+		while (start + usedTokens < listEnd - 1)
+		{
+			auto result = lexInitializerClause(tokens, start + usedTokens, listEnd - 1);
+			if (result.m_UsedTokens == 0)
+				break;
+			usedTokens += result.m_UsedTokens;
+			nodes.emplace_back(std::move(result.m_Node));
+
+			auto& token = tokens[start + usedTokens];
+			if (token.m_Class != ETokenClass::Symbol || token.m_Str != ",")
+				break;
+			++usedTokens;
+		}
+
+		return { listEnd - start, { EASTNodeType::BracedInitList, Token {}, std::move(nodes) } };
+	}
+
+	LexResult Lexer::lexInitializerClause(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	{
+		if (start > end)
+			return {};
+
+		auto result = lexAssignmentExpression(tokens, start, end);
+		if (result.m_UsedTokens != 0)
+			return result;
+
+		return lexBracedInitList(tokens, start, end);
+	}
+
+	LexResult Lexer::lexAssignmentExpression(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	{
+		if (start > end)
+			return {};
+
+		std::size_t          usedTokens = 0;
+		std::vector<ASTNode> nodes;
+
+		auto result = lexIdentifier(tokens, start + usedTokens, end);
+		if (result.m_UsedTokens == 0 ||
+		    start + usedTokens > end)
+			return {};
+		usedTokens += result.m_UsedTokens;
+		nodes.emplace_back(result.m_Node);
+
+		{
+			auto& token = tokens[start + usedTokens];
+			if (token.m_Class != ETokenClass::Symbol)
+				return {};
+
+			bool assignment = false;
+			if (token.m_Str == "=")
+				assignment = true;
+
+			if (!assignment)
+				return {};
+
+			++usedTokens;
+			nodes.emplace_back(EASTNodeType::Operator, token, std::vector<ASTNode> {});
+		}
+
+		result = lexInitializerClause(tokens, start + usedTokens, end);
+		if (result.m_UsedTokens == 0)
+			return {};
+		usedTokens += result.m_UsedTokens;
+		nodes.emplace_back(std::move(result.m_Node));
+
+		return { usedTokens, { EASTNodeType::AssignmentExpression, Token {}, std::move(nodes) } };
+	}
+
+	LexResult Lexer::lexExpression(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	{
+		if (start > end)
+			return {};
+
+		auto result = lexAssignmentExpression(tokens, start, end);
+		if (result.m_UsedTokens != 0)
+			return result;
+
+		return {};
+	}
+
+	LexResult Lexer::lexExpressionStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	{
+		if (start > end)
+			return {};
+
+		std::size_t          usedTokens = 0;
+		std::vector<ASTNode> nodes;
+
+		auto result = lexExpression(tokens, start + usedTokens, end);
+		if (result.m_UsedTokens == 0)
+			return {};
+		usedTokens += result.m_UsedTokens;
+		nodes.emplace_back(std::move(result.m_Node));
+
+		auto& token = tokens[start + usedTokens];
+		if (token.m_Class != ETokenClass::Symbol || token.m_Str != ";")
+			return {};
+		++usedTokens;
+
+		return { usedTokens, { EASTNodeType::ExpressionStatement, Token {}, std::move(nodes) } };
+	}
+
+	LexResult Lexer::lexCompoundStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	{
+		if (start > end)
+			return {};
+
+		std::size_t          usedTokens = 0;
+		std::vector<ASTNode> nodes;
+
+		{
+			// Opening
+			Token& token = tokens[start + usedTokens];
+			if (token.m_Class != ETokenClass::Symbol && token.m_Str != "{")
+				return {};
+			++usedTokens;
+		}
+		std::size_t blockEnd = start + usedTokens;
+		{
+			// Closing
+			std::uint64_t count = 1;
+			while (blockEnd <= end)
 			{
 				Token& token = tokens[blockEnd];
 				if (token.m_Class == ETokenClass::Symbol)
@@ -267,70 +449,175 @@ namespace Frertex
 					break;
 			}
 			if (count != 0)
-				return { 0, {} };
+				return {};
 		}
 
-		//while (offset + usedTokens < blockEnd)
-		//{
-		//	auto result = lexStatement(tokens, offset + usedTokens);
-		//	if (result.m_UsedTokens == 0)
-		//		return { 0, {} };
-		//	usedTokens += result.m_UsedTokens;
-		//	nodes.emplace_back(std::move(result.m_Node));
-		//}
+		while (start + usedTokens < blockEnd - 1)
+		{
+			auto result = lexStatement(tokens, start + usedTokens, blockEnd - 1);
+			if (result.m_UsedTokens == 0)
+				return {};
+			usedTokens += result.m_UsedTokens;
+			nodes.emplace_back(std::move(result.m_Node));
+		}
 
-		return { blockEnd - offset, { EASTNodeType::StatementBlock, Token {}, std::move(nodes) } };
+		return { blockEnd - start, { EASTNodeType::CompoundStatement, Token {}, std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexFunction(std::vector<Token>& tokens, std::size_t offset)
+	LexResult Lexer::lexReturnStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
+		if (start > end)
+			return {};
+
 		std::size_t          usedTokens = 0;
 		std::vector<ASTNode> nodes;
 
-		auto result = lexAttributes(tokens, offset + usedTokens);
+		{
+			auto& token = tokens[start + usedTokens];
+			if (token.m_Class != ETokenClass::Identifier || token.m_Str != "return")
+				return {};
+			++usedTokens;
+		}
+
+		do
+		{
+			auto result = lexExpression(tokens, start, end);
+			if (result.m_UsedTokens != 0)
+			{
+				usedTokens += result.m_UsedTokens;
+				nodes.emplace_back(result.m_Node);
+				break;
+			}
+
+			result = lexBracedInitList(tokens, start, end);
+			if (result.m_UsedTokens != 0)
+			{
+				usedTokens += result.m_UsedTokens;
+				nodes.emplace_back(result.m_Node);
+				break;
+			}
+		} while (false);
+
+		{
+			auto& token = tokens[start + usedTokens];
+			if (token.m_Class != ETokenClass::Symbol || token.m_Str != ";")
+				return {};
+			++usedTokens;
+		}
+
+		return { usedTokens, { EASTNodeType::ReturnStatement, Token {}, std::move(nodes) } };
+	}
+
+	LexResult Lexer::lexStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	{
+		if (start > end)
+			return {};
+
+		auto result = lexExpressionStatement(tokens, start, end);
+		if (result.m_UsedTokens != 0)
+			return result;
+
+		result = lexCompoundStatement(tokens, start, end);
+		if (result.m_UsedTokens != 0)
+			return result;
+
+		result = lexReturnStatement(tokens, start, end);
+		if (result.m_UsedTokens != 0)
+			return result;
+
+		return {};
+	}
+
+	LexResult Lexer::lexStatements(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	{
+		if (start > end)
+			return { 0, { EASTNodeType::Statements } };
+
+		std::size_t          usedTokens = 0;
+		std::vector<ASTNode> nodes;
+
+		while (start + usedTokens < end)
+		{
+			auto result = lexStatement(tokens, start + usedTokens, end);
+			if (result.m_UsedTokens == 0)
+				break;
+			usedTokens += result.m_UsedTokens;
+			nodes.emplace_back(std::move(result.m_Node));
+		}
+
+		return { usedTokens, { EASTNodeType::Statements, Token {}, std::move(nodes) } };
+	}
+
+	LexResult Lexer::lexFunctionDeclaration(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	{
+		if (start > end)
+			return {};
+
+		std::size_t          usedTokens = 0;
+		std::vector<ASTNode> nodes;
+
+		auto result = lexAttributes(tokens, start + usedTokens, end);
 		usedTokens += result.m_UsedTokens;
 		nodes.emplace_back(std::move(result.m_Node));
 
-		result = lexTypename(tokens, offset + usedTokens);
+		result = lexTypename(tokens, start + usedTokens, end);
 		if (result.m_UsedTokens == 0)
-			return { 0, {} };
+			return {};
 		usedTokens += result.m_UsedTokens;
 		nodes.emplace_back(std::move(result.m_Node));
 
-		result = lexIdentifier(tokens, offset + usedTokens);
+		result = lexIdentifier(tokens, start + usedTokens, end);
 		if (result.m_UsedTokens == 0)
-			return { 0, {} };
+			return {};
 		usedTokens += result.m_UsedTokens;
 		nodes.emplace_back(std::move(result.m_Node));
+
+		if (start + usedTokens > end)
+			return {};
 
 		{
 			// Argument opening
-			auto& token = tokens[offset + usedTokens];
+			auto& token = tokens[start + usedTokens];
 			if (token.m_Class != ETokenClass::Symbol || token.m_Str != "(")
-				return { 0, {} };
+				return {};
 			++usedTokens;
 		}
 
-		result = lexArguments(tokens, offset + usedTokens);
+		result = lexArguments(tokens, start + usedTokens, end);
 		if (result.m_UsedTokens == 0)
-			return { 0, {} };
+			return {};
 		usedTokens += result.m_UsedTokens;
 		nodes.emplace_back(std::move(result.m_Node));
+
+		if (start + usedTokens > end)
+			return {};
 
 		{
 			// Argument closing
-			auto& token = tokens[offset + usedTokens];
+			auto& token = tokens[start + usedTokens];
 			if (token.m_Class != ETokenClass::Symbol || token.m_Str != ")")
-				return { 0, {} };
+				return {};
 			++usedTokens;
 		}
 
-		result = lexStatementBlock(tokens, offset + usedTokens);
+		result = lexCompoundStatement(tokens, start + usedTokens, end);
 		if (result.m_UsedTokens == 0)
-			return { 0, {} };
+			return {};
 		usedTokens += result.m_UsedTokens;
 		nodes.emplace_back(std::move(result.m_Node));
 
-		return { usedTokens, { EASTNodeType::Function, Token {}, std::move(nodes) } };
+		return { usedTokens, { EASTNodeType::FunctionDeclaration, Token {}, std::move(nodes) } };
+	}
+
+	LexResult Lexer::lexDeclaration(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	{
+		if (start > end)
+			return {};
+
+		auto result = lexFunctionDeclaration(tokens, start, end);
+		if (result.m_UsedTokens != 0)
+			return result;
+
+		return {};
 	}
 } // namespace Frertex

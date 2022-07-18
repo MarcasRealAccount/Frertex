@@ -11,6 +11,7 @@ namespace Frertex
 	{
 		Unknown = 0,
 		TranslationUnit,
+		Operator,
 		TypeQualifier,
 		TypeQualifiers,
 		Identifier,
@@ -19,8 +20,15 @@ namespace Frertex
 		Attributes,
 		Argument,
 		Arguments,
-		StatementBlock,
-		Function
+		BracedInitList,
+		AssignmentExpression,
+		ExpressionStatement,
+		CompoundStatement,
+		ReturnStatement,
+		Statement,
+		Statements,
+		FunctionDeclaration,
+		Declaration
 	};
 
 	std::string_view ASTNodeTypeToString(EASTNodeType type);
@@ -75,17 +83,26 @@ namespace Frertex
 		auto& getMessages() const { return m_Messages; }
 
 	private:
-		LexResult lexTranslationUnit(std::vector<Token>& tokens, std::size_t offset);
-		LexResult lexTypeQualifier(std::vector<Token>& tokens, std::size_t offset);
-		LexResult lexTypeQualifiers(std::vector<Token>& tokens, std::size_t offset);
-		LexResult lexIdentifier(std::vector<Token>& tokens, std::size_t offset);
-		LexResult lexTypename(std::vector<Token>& tokens, std::size_t offset);
-		LexResult lexAttribute(std::vector<Token>& tokens, std::size_t offset);
-		LexResult lexAttributes(std::vector<Token>& tokens, std::size_t offset);
-		LexResult lexArgument(std::vector<Token>& tokens, std::size_t offset);
-		LexResult lexArguments(std::vector<Token>& tokens, std::size_t offset);
-		LexResult lexStatementBlock(std::vector<Token>& tokens, std::size_t offset);
-		LexResult lexFunction(std::vector<Token>& tokens, std::size_t offset);
+		LexResult lexTranslationUnit(std::vector<Token>& tokens, std::size_t start, std::size_t end);
+		LexResult lexTypeQualifier(std::vector<Token>& tokens, std::size_t start, std::size_t end);
+		LexResult lexTypeQualifiers(std::vector<Token>& tokens, std::size_t start, std::size_t end);
+		LexResult lexIdentifier(std::vector<Token>& tokens, std::size_t start, std::size_t end);
+		LexResult lexTypename(std::vector<Token>& tokens, std::size_t start, std::size_t end);
+		LexResult lexAttribute(std::vector<Token>& tokens, std::size_t start, std::size_t end);
+		LexResult lexAttributes(std::vector<Token>& tokens, std::size_t start, std::size_t end);
+		LexResult lexArgument(std::vector<Token>& tokens, std::size_t start, std::size_t end);
+		LexResult lexArguments(std::vector<Token>& tokens, std::size_t start, std::size_t end);
+		LexResult lexBracedInitList(std::vector<Token>& tokens, std::size_t start, std::size_t end);
+		LexResult lexInitializerClause(std::vector<Token>& tokens, std::size_t start, std::size_t end);
+		LexResult lexAssignmentExpression(std::vector<Token>& tokens, std::size_t start, std::size_t end);
+		LexResult lexExpression(std::vector<Token>& tokens, std::size_t start, std::size_t end);
+		LexResult lexExpressionStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end);
+		LexResult lexCompoundStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end);
+		LexResult lexReturnStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end);
+		LexResult lexStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end);
+		LexResult lexStatements(std::vector<Token>& tokens, std::size_t start, std::size_t end);
+		LexResult lexFunctionDeclaration(std::vector<Token>& tokens, std::size_t start, std::size_t end);
+		LexResult lexDeclaration(std::vector<Token>& tokens, std::size_t start, std::size_t end);
 
 	private:
 		std::vector<Message> m_Messages;
