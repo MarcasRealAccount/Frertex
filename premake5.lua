@@ -15,14 +15,13 @@ workspace("Frertex")
 	startproject("Frertex")
 
 	group("Dependencies")
-
-	group("Libs")
 	project("FMT")
 		location("ThirdParty/FMT/")
 		warnings("Off")
 		libs.fmt:setup()
 		location("ThirdParty/")
 
+	group("Libs")
 	project("Frertex")
 		location("Frertex/")
 		warnings("Extra")
