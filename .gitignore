@@ -7,6 +7,9 @@
 *.vcxproj
 *.vcxproj.*
 
+# Vim
+*.swp
+
 # CLion
 /.idea/
 
