@@ -3,6 +3,7 @@
 #include <Frertex/Lexer.h>
 #include <Frertex/Preprocessor.h>
 #include <Frertex/Tokenizer.h>
+#include <Frertex/Utils/Profiler.h>
 #include <Frertex/Utils/Utils.h>
 
 #include <fmt/format.h>
@@ -191,19 +192,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 	SetConsoleOutputCP(65001);
 #endif
 
-	Timer              timer;
-	std::ostringstream times;
-
-	timer.begin();
-	auto tokens = Frertex::Tokenize(ReadIncludedFile("Test.frer").m_Source);
-	timer.end();
-	times << timer.formatTime("Tokenizer");
-
-	timer.begin();
+	auto                  tokens = Frertex::Tokenize(ReadIncludedFile("Test.frer").m_Source);
 	Frertex::Preprocessor preprocessor { &ReadIncludedFile };
 	tokens = preprocessor.process(std::move(tokens), "Test.frer");
-	timer.end();
-	times << timer.formatTime("Preprocessor");
 
 	auto& includedFilenames = preprocessor.getIncludeFilenames();
 	bool  errored           = false;
@@ -234,77 +225,73 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 			return 1;
 		}
 	}
-	for (auto& token : tokens)
-		std::cout << token << '\n';
-	std::cout << '\n';
+	//for (auto& token : tokens)
+	//	std::cout << token << '\n';
+	//std::cout << '\n';
 
-	std::ostringstream   str;
-	Frertex::ETokenClass previousClass = Frertex::ETokenClass::Unknown;
-	std::size_t          indents       = 0;
-	for (auto& token : tokens)
-	{
-		if (previousClass == Frertex::ETokenClass::Identifier)
-		{
-			if (token.m_Class == Frertex::ETokenClass::Symbol)
-			{
-				if (token.m_Str == "_" ||
-				    token.m_Str == "{" ||
-				    token.m_Str == "=")
-					str << ' ';
-			}
-			else
-			{
-				str << ' ';
-			}
-		}
-		else if (token.m_Class == Frertex::ETokenClass::Symbol)
-		{
-			if (token.m_Str == "}")
-			{
-				--indents;
-				str.seekp(-1, std::ios::cur);
-			}
-		}
+	//std::ostringstream   str;
+	//Frertex::ETokenClass previousClass = Frertex::ETokenClass::Unknown;
+	//std::size_t          indents       = 0;
+	//for (auto& token : tokens)
+	//{
+	//	if (previousClass == Frertex::ETokenClass::Identifier)
+	//	{
+	//		if (token.m_Class == Frertex::ETokenClass::Symbol)
+	//		{
+	//			if (token.m_Str == "_" ||
+	//			    token.m_Str == "{" ||
+	//			    token.m_Str == "=")
+	//				str << ' ';
+	//		}
+	//		else
+	//		{
+	//			str << ' ';
+	//		}
+	//	}
+	//	else if (token.m_Class == Frertex::ETokenClass::Symbol)
+	//	{
+	//		if (token.m_Str == "}")
+	//		{
+	//			--indents;
+	//			str.seekp(-1, std::ios::cur);
+	//		}
+	//	}
 
-		str << token.m_Str;
+	//	str << token.m_Str;
 
-		if (token.m_Class == Frertex::ETokenClass::Symbol)
-		{
-			if (token.m_Str == "," ||
-			    token.m_Str == ":" ||
-			    token.m_Str == "=")
-			{
-				str << ' ';
-			}
-			else if (token.m_Str == ";" ||
-			         token.m_Str == "}")
-			{
-				str << '\n'
-				    << std::string(indents, '\t');
-			}
-			else if (token.m_Str == "{")
-			{
-				++indents;
-				str << '\n'
-				    << std::string(indents, '\t');
-			}
-		}
-		else if (token.m_Class == Frertex::ETokenClass::Preprocessor)
-		{
-			str << '\n'
-			    << std::string(indents, '\t');
-		}
+	//	if (token.m_Class == Frertex::ETokenClass::Symbol)
+	//	{
+	//		if (token.m_Str == "," ||
+	//		    token.m_Str == ":" ||
+	//		    token.m_Str == "=")
+	//		{
+	//			str << ' ';
+	//		}
+	//		else if (token.m_Str == ";" ||
+	//		         token.m_Str == "}")
+	//		{
+	//			str << '\n'
+	//			    << std::string(indents, '\t');
+	//		}
+	//		else if (token.m_Str == "{")
+	//		{
+	//			++indents;
+	//			str << '\n'
+	//			    << std::string(indents, '\t');
+	//		}
+	//	}
+	//	else if (token.m_Class == Frertex::ETokenClass::Preprocessor)
+	//	{
+	//		str << '\n'
+	//		    << std::string(indents, '\t');
+	//	}
 
-		previousClass = token.m_Class;
-	}
-	std::cout << str.str() << "\n";
+	//	previousClass = token.m_Class;
+	//}
+	//std::cout << str.str() << "\n";
 
-	timer.begin();
 	Frertex::Lexer lexer {};
 	auto           ast = lexer.lex(std::move(tokens));
-	timer.end();
-	times << timer.formatTime("Lexer");
-
 	if (!lexer.getMessages().empty())
 	{
 		for (auto& message : lexer.getMessages())
@@ -344,12 +331,13 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 			return 2;
 		}
 	}
-	if (!ast.getRoot())
-		std::cout << "No Root\n";
-	else
-		PrintAST(ast);
-	std::cout << '\n';
-	std::cout << times.str();
+	//if (!ast.getRoot())
+	//	std::cout << "No Root\n";
+	//else
+	//	PrintAST(ast);
+	//std::cout << '\n';
+
+	std::cout << Frertex::Utils::ProfilerToString();
 
 #if BUILD_IS_SYSTEM_WINDOWS
 	SetConsoleOutputCP(defaultCP);

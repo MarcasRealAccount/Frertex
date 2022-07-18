@@ -1,5 +1,6 @@
 #include "Frertex/Preprocessor.h"
 #include "Frertex/Tokenizer.h"
+#include "Frertex/Utils/Profiler.h"
 #include "Frertex/Utils/Utils.h"
 
 #include <fmt/format.h>
@@ -13,6 +14,8 @@ namespace Frertex
 
 	std::vector<Token> Preprocessor::process(Utils::CopyMovable<std::vector<Token>>&& tokens, std::string_view filename)
 	{
+		PROFILE_FUNC;
+
 		// TODO(MarcasRealAccount): Implement macro replacement in other tokens ;)
 
 		m_IncludedFilenames.emplace_back(filename);
@@ -723,22 +726,30 @@ namespace Frertex
 
 	void Preprocessor::addMacro(Utils::CopyMovable<std::string>&& name)
 	{
+		PROFILE_FUNC;
+
 		m_Macros.insert_or_assign(name.get(), std::vector<Token> {});
 	}
 
 	void Preprocessor::addMacro(Utils::CopyMovable<std::string>&& name, Utils::CopyMovable<std::string>&& value)
 	{
+		PROFILE_FUNC;
+
 		std::string str = value.get();
 		m_Macros.insert_or_assign(name.get(), Tokenize(str, { 0, 0, 0, ~0ULL }));
 	}
 
 	void Preprocessor::addMacro(Utils::CopyMovable<std::string>&& name, Utils::CopyMovable<std::vector<Token>>&& value)
 	{
+		PROFILE_FUNC;
+
 		m_Macros.insert_or_assign(name.get(), value.get());
 	}
 
 	void Preprocessor::removeMacro(std::string_view name)
 	{
+		PROFILE_FUNC;
+
 		auto itr = m_Macros.begin();
 		while (itr != m_Macros.end() && itr->first != name)
 			++itr;
@@ -748,6 +759,8 @@ namespace Frertex
 
 	bool Preprocessor::hasMacro(std::string_view name)
 	{
+		PROFILE_FUNC;
+
 		auto itr = m_Macros.begin();
 		while (itr != m_Macros.end() && itr->first != name)
 			++itr;
@@ -756,6 +769,8 @@ namespace Frertex
 
 	std::vector<Token>* Preprocessor::getMacro(std::string_view name)
 	{
+		PROFILE_FUNC;
+
 		auto itr = m_Macros.begin();
 		while (itr != m_Macros.end() && itr->first != name)
 			++itr;
@@ -764,16 +779,22 @@ namespace Frertex
 
 	void Preprocessor::addWarning(SourceSpan span, SourcePoint point, Utils::CopyMovable<std::string>&& message)
 	{
+		PROFILE_FUNC;
+
 		m_Messages.emplace_back(EMessageType::Warning, span, point, message.get());
 	}
 
 	void Preprocessor::addError(SourceSpan span, SourcePoint point, Utils::CopyMovable<std::string>&& message)
 	{
+		PROFILE_FUNC;
+
 		m_Messages.emplace_back(EMessageType::Error, span, point, message.get());
 	}
 
 	bool Preprocessor::hasIncludedFile(std::string_view filename)
 	{
+		PROFILE_FUNC;
+
 		auto itr = m_IncludedFilenames.begin();
 		while (itr != m_IncludedFilenames.end() && *itr != filename)
 			++itr;

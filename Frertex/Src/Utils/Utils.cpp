@@ -1,9 +1,12 @@
 #include "Frertex/Utils/Utils.h"
+#include "Frertex/Utils/Profiler.h"
 
 namespace Frertex::Utils
 {
 	std::string EscapeString(Utils::CopyMovable<std::string>&& str)
 	{
+		PROFILE_FUNC;
+
 		std::string output = str.get();
 
 		for (std::size_t i = 0; i < output.size(); ++i)

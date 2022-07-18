@@ -1,6 +1,8 @@
 #pragma once
 
+#include <chrono>
 #include <string>
+#include <unordered_map>
 
 namespace Frertex::Utils
 {

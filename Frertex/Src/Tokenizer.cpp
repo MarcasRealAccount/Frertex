@@ -1,4 +1,5 @@
 #include "Frertex/Tokenizer.h"
+#include "Frertex/Utils/Profiler.h"
 
 #include <sstream>
 
@@ -6,6 +7,8 @@ namespace Frertex
 {
 	std::vector<Token> Tokenize(std::string_view str, SourcePoint start)
 	{
+		PROFILE_FUNC;
+
 		std::vector<Token> tokens;
 
 		std::size_t     tokenLength       = 0;

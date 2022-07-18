@@ -1,4 +1,5 @@
 #include "Frertex/Token.h"
+#include "Frertex/Utils/Profiler.h"
 #include "Frertex/Utils/Utils.h"
 
 #include <sstream>
@@ -69,6 +70,8 @@ namespace Frertex
 
 	ECharacterClass GetCharacterClass(char c)
 	{
+		PROFILE_FUNC;
+
 		switch (c)
 		{
 		case '\t': return ECharacterClass::Whitespace;
