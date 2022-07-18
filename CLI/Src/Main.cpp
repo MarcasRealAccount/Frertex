@@ -5,6 +5,9 @@
 #include <Frertex/Tokenizer.h>
 #include <Frertex/Utils/Utils.h>
 
+#include <fmt/format.h>
+
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -53,14 +56,21 @@ std::size_t UTF8Codepoints(const std::string& str)
 	while (itr != end)
 	{
 		std::uint8_t c = *itr;
-		if (c < 0b1000'0000U)
+		if (c & 0b1000'0000U)
+		{
+			// UTF8 extending
+			if ((c & 0b0111'0000U) == 0b0111'0000U)
+				itr += 4;
+			else if ((c & 0b0110'0000U) == 0b0110'0000U)
+				itr += 3;
+			else
+				itr += 2;
+		}
+		else
+		{
+			// ASCII
 			++itr;
-		else if (c < 0b1100'0000U)
-			itr += 2;
-		else if (c < 0b1110'0000U)
-			itr += 3;
-		else if (c < 0b1111'0000U)
-			itr += 4;
+		}
 		++count;
 	}
 	return count;
@@ -147,6 +157,33 @@ void PrintAST(const Frertex::AST& ast)
 	std::cout << str.str() << '\n';
 }
 
+struct Timer
+{
+	using Clock = std::chrono::high_resolution_clock;
+
+	void begin()
+	{
+		m_Start = Clock::now();
+	}
+
+	void end()
+	{
+		m_End = Clock::now();
+	}
+
+	float getTime() const
+	{
+		return std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(m_End - m_Start).count();
+	}
+
+	std::string formatTime(Frertex::Utils::CopyMovable<std::string>&& name) const
+	{
+		return fmt::format("{} finished in {} ms\n", name.get(), getTime());
+	}
+
+	Clock::time_point m_Start, m_End;
+};
+
 int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 {
 #if BUILD_IS_SYSTEM_WINDOWS
@@ -154,10 +191,20 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 	SetConsoleOutputCP(65001);
 #endif
 
-	auto                  tokens = Frertex::Tokenize(ReadIncludedFile("Test.frer").m_Source);
+	Timer              timer;
+	std::ostringstream times;
+
+	timer.begin();
+	auto tokens = Frertex::Tokenize(ReadIncludedFile("Test.frer").m_Source);
+	timer.end();
+	times << timer.formatTime("Tokenizer");
+
+	timer.begin();
 	Frertex::Preprocessor preprocessor { &ReadIncludedFile };
-	Frertex::Lexer        lexer {};
-	tokens                  = preprocessor.process(std::move(tokens), "Test.frer");
+	tokens = preprocessor.process(std::move(tokens), "Test.frer");
+	timer.end();
+	times << timer.formatTime("Preprocessor");
+
 	auto& includedFilenames = preprocessor.getIncludeFilenames();
 	bool  errored           = false;
 	if (!preprocessor.getMessages().empty())
@@ -250,9 +297,14 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 
 		previousClass = token.m_Class;
 	}
-	std::cout << str.str() << "\n\n";
+	std::cout << str.str() << "\n";
 
-	auto ast = lexer.lex(std::move(tokens));
+	timer.begin();
+	Frertex::Lexer lexer {};
+	auto           ast = lexer.lex(std::move(tokens));
+	timer.end();
+	times << timer.formatTime("Lexer");
+
 	if (!lexer.getMessages().empty())
 	{
 		for (auto& message : lexer.getMessages())
@@ -297,6 +349,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 	else
 		PrintAST(ast);
 	std::cout << '\n';
+	std::cout << times.str();
 
 #if BUILD_IS_SYSTEM_WINDOWS
 	SetConsoleOutputCP(defaultCP);
