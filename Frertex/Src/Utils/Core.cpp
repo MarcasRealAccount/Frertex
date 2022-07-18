@@ -1,8 +1,8 @@
-#include "Core.h"
+#include "Frertex/Utils/Core.h"
 
 #include <sstream>
 
-namespace Core
+namespace Frertex::Core
 {
 	std::ostream& printBuildConfigFlags(std::ostream& stream, const BuildConfigFlags& flags)
 	{
@@ -175,4 +175,4 @@ namespace Core
 
 		return stream << str.str();
 	}
-} // namespace Core
+} // namespace Frertex::Core

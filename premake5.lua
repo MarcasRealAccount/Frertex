@@ -1,6 +1,7 @@
 require("Premake/Common")
 
-require("Premake/Libs/compiler")
+require("Premake/ThirdParty/fmt")
+require("Premake/Libs/frertex")
 
 workspace("Frertex")
 	common:setConfigsAndPlatforms()
@@ -16,15 +17,21 @@ workspace("Frertex")
 	group("Dependencies")
 
 	group("Libs")
-	project("Compiler")
-		location("Compiler/")
+	project("FMT")
+		location("ThirdParty/FMT/")
+		warnings("Off")
+		libs.fmt:setup()
+		location("ThirdParty/")
+
+	project("Frertex")
+		location("Frertex/")
 		warnings("Extra")
-		libs.frertexcompiler:setup()
+		libs.frertex:setup()
 		common:addActions()
 
 	group("Apps")
-	project("Frertex")
-		location("Frertex/")
+	project("CLI")
+		location("CLI/")
 		warnings("Extra")
 
 		common:outDirs()
@@ -36,6 +43,6 @@ workspace("Frertex")
 		files({ "%{prj.location}/Src/**" })
 		removefiles({ "*.DS_Store" })
 
-		libs.frertexcompiler:setupDep()
+		libs.frertex:setupDep()
 
 		common:addActions()

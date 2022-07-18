@@ -1,6 +1,7 @@
 #include "Frertex/Message.h"
 
-#include <format>
+#include <fmt/format.h>
+
 #include <sstream>
 
 namespace Frertex
@@ -21,7 +22,7 @@ namespace Frertex
 		std::string_view actualFilename = filenames[message.m_Span.m_Start.m_ActualFile];
 
 		if (message.m_Span.m_Start.m_ActualFile != message.m_Span.m_End.m_ActualFile)
-			return std::format("{} {}:{} {}: {}\n{}\n{}^\nMultifile messages not supported, and never will, sorry :)",
+			return fmt::format("{} {}:{} {}: {}\n{}\n{}^\nMultifile messages not supported, and never will, sorry :)",
 			                   filename,
 			                   message.m_Span.m_Start.m_Line + 1,
 			                   message.m_Span.m_Start.m_Column + 1,
@@ -32,7 +33,7 @@ namespace Frertex
 
 		if (message.m_Span.m_Start.m_Line == message.m_Span.m_End.m_Line)
 		{
-			return std::format("{} {}:{} {}: {}\n{}\n{}{}^{}",
+			return fmt::format("{} {}:{} {}: {}\n{}\n{}{}^{}",
 			                   filename,
 			                   message.m_Span.m_Start.m_Line + 1,
 			                   message.m_Span.m_Start.m_Column + 1,
@@ -62,7 +63,7 @@ namespace Frertex
 				squigglesEnd = message.m_Span.m_End.m_Column - message.m_Point.m_Column - 1;
 			else
 				squigglesEnd = line.size() - message.m_Point.m_Column;
-			return std::format("{} {}:{} -> {}:{} {}: {}\n{}\n{}^\nMultiline messages not supported atm, sorry :)",
+			return fmt::format("{} {}:{} -> {}:{} {}: {}\n{}\n{}^\nMultiline messages not supported atm, sorry :)",
 			                   filename,
 			                   message.m_Span.m_Start.m_Line + 1,
 			                   message.m_Span.m_Start.m_Column + 1,

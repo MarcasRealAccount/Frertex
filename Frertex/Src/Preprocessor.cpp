@@ -2,7 +2,8 @@
 #include "Frertex/Tokenizer.h"
 #include "Frertex/Utils/Utils.h"
 
-#include <format>
+#include <fmt/format.h>
+
 #include <unordered_map>
 
 namespace Frertex
@@ -97,7 +98,7 @@ namespace Frertex
 							auto result = m_IncludeHandler(include);
 							if (result.m_Status == EIncludeStatus::Failure)
 							{
-								addError(input.m_Span, input.m_Span.m_Start, std::format("File \"{}\" not found", Utils::EscapeString(include)));
+								addError(input.m_Span, input.m_Span.m_Start, fmt::format("File \"{}\" not found", Utils::EscapeString(include)));
 								continue;
 							}
 
@@ -249,6 +250,9 @@ namespace Frertex
 							error = (*macro)[0].m_Str;
 							break;
 						}
+						default:
+							addError(input.m_Span, input.m_Span.m_Start, "Expected string or identifier");
+							continue;
 						}
 
 						addError(preprocessorSpan, directive.m_Span.m_Start, std::move(error));
@@ -297,6 +301,9 @@ namespace Frertex
 							warn = (*macro)[0].m_Str;
 							break;
 						}
+						default:
+							addError(input.m_Span, input.m_Span.m_Start, "Expected string or identifier");
+							continue;
 						}
 
 						addWarning(preprocessorSpan, directive.m_Span.m_Start, std::move(warn));
@@ -403,6 +410,9 @@ namespace Frertex
 								filenameStr = (*macro)[0].m_Str;
 								break;
 							}
+							default:
+								addError(filename.m_Span, filename.m_Span.m_Start, "Expected string or identifier");
+								continue;
 							}
 
 							auto itr2 = m_IncludedFilenames.begin();
@@ -541,7 +551,7 @@ namespace Frertex
 									{
 										SourcePoint point = directiveStart.m_Span.m_End;
 										++point.m_Column;
-										addError(SourceSpan { point, point }, point, "Expected boolean statement");
+										addError(SourceSpan { point, point }, point, "Expected bool statement");
 										continue;
 									}
 
@@ -552,7 +562,7 @@ namespace Frertex
 									    statement.m_Class != ETokenClass::OctalInteger &&
 									    statement.m_Class != ETokenClass::HexInteger)
 									{
-										addError(statement.m_Span, statement.m_Span.m_Start, "Expected boolean statement");
+										addError(statement.m_Span, statement.m_Span.m_Start, "Expected bool statement");
 										continue;
 									}
 
@@ -564,7 +574,7 @@ namespace Frertex
 										else if (statement.m_Str == "true")
 											enable = true;
 										else
-											addError(statement.m_Span, statement.m_Span.m_Start, "Expected boolean statement");
+											addError(statement.m_Span, statement.m_Span.m_Start, "Expected bool statement");
 										break;
 									case ETokenClass::Integer:
 									{
@@ -594,6 +604,9 @@ namespace Frertex
 										enable               = integer != 0;
 										break;
 									}
+									default:
+										addError(statement.m_Span, statement.m_Span.m_Start, "Expected bool or integer");
+										continue;
 									}
 								}
 								else if (directiveStart.m_Str == "ifdef" ||
@@ -691,7 +704,7 @@ namespace Frertex
 					}
 
 					if (!directiveHandled)
-						addWarning(directive.m_Span, directive.m_Span.m_Start, std::format("Unknown preprocessor directive \"{}\"", Utils::EscapeString(directive.m_Str)));
+						addWarning(directive.m_Span, directive.m_Span.m_Start, fmt::format("Unknown preprocessor directive \"{}\"", Utils::EscapeString(directive.m_Str)));
 				} while (false);
 
 				if (eraseDirective)

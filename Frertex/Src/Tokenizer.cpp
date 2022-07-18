@@ -254,6 +254,8 @@ namespace Frertex
 				case ECharacterClass::Newline:
 					tokenClass = ETokenClass::Unknown;
 					break;
+				default:
+					break;
 				}
 			}
 

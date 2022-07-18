@@ -1,12 +1,14 @@
-libs                 = libs                 or {}
-libs.frertexcompiler = libs.frertexcompiler or {
+libs         = libs         or {}
+libs.frertex = libs.frertex or {
 	name     = "",
 	location = ""
 }
 
-local frertexcompiler = libs.frertexcompiler
+require("../ThirdParty/fmt")
 
-function frertexcompiler:setup()
+local frertex = libs.frertex
+
+function frertex:setup()
 	self.name     = common:projectName()
 	self.location = common:projectLocation()
 
@@ -19,9 +21,13 @@ function frertexcompiler:setup()
 		self.location .. "/Inc/**",
 		self.location .. "/Src/**"
 	})
+
+	libs.fmt:setupDep()
 end
 
-function frertexcompiler:setupDep()
+function frertex:setupDep()
 	links({ self.name })
 	externalincludedirs({ self.location .. "/Inc/" })
+
+	libs.fmt:setupDep()
 end
