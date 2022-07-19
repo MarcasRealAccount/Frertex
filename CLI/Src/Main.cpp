@@ -1,5 +1,7 @@
 #include "Utils/Core.h"
 
+#include <Frertex/Compiler.h>
+#include <Frertex/FIL.h>
 #include <Frertex/Lexer.h>
 #include <Frertex/Preprocessor.h>
 #include <Frertex/Tokenizer.h>
@@ -158,33 +160,6 @@ void PrintAST(const Frertex::AST& ast)
 	std::cout << str.str() << '\n';
 }
 
-struct Timer
-{
-	using Clock = std::chrono::high_resolution_clock;
-
-	void begin()
-	{
-		m_Start = Clock::now();
-	}
-
-	void end()
-	{
-		m_End = Clock::now();
-	}
-
-	float getTime() const
-	{
-		return std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(m_End - m_Start).count();
-	}
-
-	std::string formatTime(Frertex::Utils::CopyMovable<std::string>&& name) const
-	{
-		return fmt::format("{} finished in {} ms\n", name.get(), getTime());
-	}
-
-	Clock::time_point m_Start, m_End;
-};
-
 int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 {
 #if BUILD_IS_SYSTEM_WINDOWS
@@ -196,10 +171,11 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 	Frertex::Preprocessor preprocessor { &ReadIncludedFile };
 	tokens = preprocessor.process(std::move(tokens), "Test.frer");
 
-	auto& includedFilenames = preprocessor.getIncludeFilenames();
-	bool  errored           = false;
+	bool errored = false;
 	if (!preprocessor.getMessages().empty())
 	{
+		auto& includedFilenames = preprocessor.getIncludeFilenames();
+
 		for (auto& message : preprocessor.getMessages())
 		{
 			std::string output = Frertex::FormatMessage(
@@ -294,6 +270,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 	auto           ast = lexer.lex(std::move(tokens));
 	if (!lexer.getMessages().empty())
 	{
+		auto& includedFilenames = preprocessor.getIncludeFilenames();
+
 		for (auto& message : lexer.getMessages())
 		{
 			std::string output = Frertex::FormatMessage(
@@ -336,6 +314,51 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 	//else
 	//	PrintAST(ast);
 	//std::cout << '\n';
+
+	Frertex::Compiler compiler { preprocessor.getIncludeFilenames() };
+	auto              fil = compiler.compile(std::move(ast));
+	if (!compiler.getMessages().empty())
+	{
+		auto& includedFilenames = compiler.getIncludedFilenames();
+
+		for (auto& message : compiler.getMessages())
+		{
+			std::string output = Frertex::FormatMessage(
+			    message,
+			    includedFilenames,
+			    [](std::string_view filename, Frertex::SourcePoint line) -> std::string
+			    {
+				    auto result = ReadIncludedFile(filename);
+				    if (result.m_Status == Frertex::EIncludeStatus::Failure)
+					    return {};
+				    std::size_t lineStart = line.m_Index;
+				    while (lineStart > 0 && result.m_Source[lineStart - 1] != '\n')
+					    --lineStart;
+				    std::size_t lineEnd = line.m_Index;
+				    while (lineEnd < result.m_Source.size() && result.m_Source[lineEnd] != '\n')
+					    ++lineEnd;
+				    return result.m_Source.substr(lineStart, lineEnd - lineStart);
+			    });
+			switch (message.m_Type)
+			{
+			case Frertex::EMessageType::Warning:
+				std::cout << output << '\n';
+				break;
+			case Frertex::EMessageType::Error:
+				errored = true;
+				std::cerr << output << '\n';
+				break;
+			}
+		}
+		if (errored)
+		{
+#if BUILD_IS_SYSTEM_WINDOWS
+			SetConsoleOutputCP(defaultCP);
+#endif
+			return 2;
+		}
+	}
+	Frertex::WriteFILToFile("output.fil", fil);
 
 	std::cout << Frertex::Utils::ProfilerToString();
 

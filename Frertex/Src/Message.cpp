@@ -42,7 +42,7 @@ namespace Frertex
 			                   lineCallback(actualFilename, message.m_Span.m_Start),
 			                   std::string(message.m_Span.m_Start.m_Column + 1, ' '),
 			                   std::string(message.m_Point.m_Column - message.m_Span.m_Start.m_Column, '~'),
-			                   std::string(message.m_Span.m_End.m_Column - message.m_Point.m_Column - 1, '~'));
+			                   std::string(message.m_Span.m_End.m_Column - message.m_Point.m_Column, '~'));
 		}
 		else
 		{
