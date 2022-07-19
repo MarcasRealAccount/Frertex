@@ -53,4 +53,6 @@ namespace Frertex::Utils
 #if BUILD_IS_CONFIG_DEBUG
 #define PROFILE_FUNC \
 	::Frertex::Utils::Profile _profiler { std::source_location::current().function_name() }
+#else
+#define PROFILE_FUNC
 #endif
