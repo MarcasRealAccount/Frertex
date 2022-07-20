@@ -1,6 +1,8 @@
 #include "Frertex/Compiler.h"
 #include "Frertex/Utils/Profiler.h"
 
+#include <cstring>
+
 #include <algorithm>
 #include <set>
 
