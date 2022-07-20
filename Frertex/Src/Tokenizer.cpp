@@ -254,6 +254,7 @@ namespace Frertex
 					tokenClass = (c == '#' && current.m_Column == 0) ? ETokenClass::Preprocessor : (c == '"' ? ETokenClass::String : (c == '/' ? ETokenClass::Comment : ETokenClass::Symbol));
 					break;
 				case ECharacterClass::Whitespace:
+				case ECharacterClass::Tab:
 				case ECharacterClass::Newline:
 					tokenClass = ETokenClass::Unknown;
 					break;
@@ -264,7 +265,7 @@ namespace Frertex
 
 			tokenEnd = current;
 			++current.m_Index;
-			++current.m_Column;
+			current.m_Column += characterClass == ECharacterClass::Tab ? 4 : 1;
 			if (characterClass == ECharacterClass::Newline)
 			{
 				++current.m_Line;

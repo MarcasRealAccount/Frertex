@@ -18,6 +18,7 @@ namespace Frertex
 		{
 		case ECharacterClass::Unknown: return "Unknown";
 		case ECharacterClass::Whitespace: return "Whitespace";
+		case ECharacterClass::Tab: return "Tab";
 		case ECharacterClass::Newline: return "Newline";
 		case ECharacterClass::NonDigit: return "NonDigit";
 		case ECharacterClass::Digit: return "Digit";
@@ -74,7 +75,7 @@ namespace Frertex
 
 		switch (c)
 		{
-		case '\t': return ECharacterClass::Whitespace;
+		case '\t': return ECharacterClass::Tab;
 		case '\n': return ECharacterClass::Newline;
 		case '\v': return ECharacterClass::Whitespace;
 		case '\f': return ECharacterClass::Whitespace;

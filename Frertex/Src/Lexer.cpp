@@ -127,7 +127,9 @@ namespace Frertex
 		usedTokens += result.m_UsedTokens;
 		nodes.emplace_back(std::move(result.m_Node));
 
-		return { usedTokens, { EASTNodeType::Typename, Token {}, std::move(nodes) } };
+		auto identifierToken = nodes[1].getToken();
+
+		return { usedTokens, { EASTNodeType::Typename, std::move(identifierToken), std::move(nodes) } };
 	}
 
 	LexResult Lexer::lexAttribute(std::vector<Token>& tokens, std::size_t start, std::size_t end)
@@ -140,7 +142,10 @@ namespace Frertex
 		auto result = lexIdentifier(tokens, start, end);
 		if (result.m_UsedTokens == 0)
 			return {};
-		return { result.m_UsedTokens, { EASTNodeType::Attribute, Token {}, { std::move(result.m_Node) } } };
+
+		auto identifierToken = result.m_Node.getToken();
+
+		return { result.m_UsedTokens, { EASTNodeType::Attribute, std::move(identifierToken), { std::move(result.m_Node) } } };
 	}
 
 	LexResult Lexer::lexAttributes(std::vector<Token>& tokens, std::size_t start, std::size_t end)
@@ -225,7 +230,9 @@ namespace Frertex
 		usedTokens += result.m_UsedTokens;
 		nodes.emplace_back(std::move(result.m_Node));
 
-		return { usedTokens, { EASTNodeType::Argument, Token {}, std::move(nodes) } };
+		auto identifierToken = nodes[2].getToken();
+
+		return { usedTokens, { EASTNodeType::Argument, std::move(identifierToken), std::move(nodes) } };
 	}
 
 	LexResult Lexer::lexArguments(std::vector<Token>& tokens, std::size_t start, std::size_t end)
@@ -315,7 +322,7 @@ namespace Frertex
 			++usedTokens;
 		}
 
-		return { listEnd - start, { EASTNodeType::BracedInitList, Token {}, std::move(nodes) } };
+		return { listEnd - start, { EASTNodeType::BracedInitList, tokens[start], std::move(nodes) } };
 	}
 
 	LexResult Lexer::lexInitializerClause(std::vector<Token>& tokens, std::size_t start, std::size_t end)
@@ -349,6 +356,7 @@ namespace Frertex
 		usedTokens += result.m_UsedTokens;
 		nodes.emplace_back(result.m_Node);
 
+		std::size_t operatorIndex = start + usedTokens;
 		{
 			auto& token = tokens[start + usedTokens];
 			if (token.m_Class != ETokenClass::Symbol)
@@ -371,7 +379,7 @@ namespace Frertex
 		usedTokens += result.m_UsedTokens;
 		nodes.emplace_back(std::move(result.m_Node));
 
-		return { usedTokens, { EASTNodeType::AssignmentExpression, Token {}, std::move(nodes) } };
+		return { usedTokens, { EASTNodeType::AssignmentExpression, tokens[operatorIndex], std::move(nodes) } };
 	}
 
 	LexResult Lexer::lexExpression(std::vector<Token>& tokens, std::size_t start, std::size_t end)
@@ -409,7 +417,7 @@ namespace Frertex
 			return {};
 		++usedTokens;
 
-		return { usedTokens, { EASTNodeType::ExpressionStatement, Token {}, std::move(nodes) } };
+		return { usedTokens, { EASTNodeType::ExpressionStatement, tokens[start + usedTokens - 1], std::move(nodes) } };
 	}
 
 	LexResult Lexer::lexCompoundStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end)
@@ -465,7 +473,7 @@ namespace Frertex
 			nodes.emplace_back(std::move(result.m_Node));
 		}
 
-		return { blockEnd - start, { EASTNodeType::CompoundStatement, Token {}, std::move(nodes) } };
+		return { blockEnd - start, { EASTNodeType::CompoundStatement, tokens[start], std::move(nodes) } };
 	}
 
 	LexResult Lexer::lexReturnStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end)
@@ -511,7 +519,7 @@ namespace Frertex
 			++usedTokens;
 		}
 
-		return { usedTokens, { EASTNodeType::ReturnStatement, Token {}, std::move(nodes) } };
+		return { usedTokens, { EASTNodeType::ReturnStatement, tokens[start], std::move(nodes) } };
 	}
 
 	LexResult Lexer::lexStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end)
@@ -622,7 +630,9 @@ namespace Frertex
 		usedTokens += result.m_UsedTokens;
 		nodes.emplace_back(std::move(result.m_Node));
 
-		return { usedTokens, { EASTNodeType::FunctionDeclaration, Token {}, std::move(nodes) } };
+		auto identifierToken = nodes[2].getToken();
+
+		return { usedTokens, { EASTNodeType::FunctionDeclaration, std::move(identifierToken), std::move(nodes) } };
 	}
 
 	LexResult Lexer::lexDeclaration(std::vector<Token>& tokens, std::size_t start, std::size_t end)

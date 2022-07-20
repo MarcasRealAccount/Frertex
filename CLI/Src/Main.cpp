@@ -36,7 +36,7 @@ Frertex::IncludeData ReadIncludedFile(std::string_view filename)
 	return {};
 }
 
-std::string ReadFileLine(std::string_view filename, Frertex::SourcePoint line)
+std::string ReadFileLine(std::string_view filename, Frertex::SourcePoint line, [[maybe_unused]] void* userData)
 {
 	auto result = ReadIncludedFile(filename);
 	if (result.m_Status == Frertex::EIncludeStatus::Failure)
@@ -277,7 +277,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 			std::string output = Frertex::FormatMessage(
 			    message,
 			    includedFilenames,
-			    [](std::string_view filename, Frertex::SourcePoint line) -> std::string
+			    [](std::string_view filename, Frertex::SourcePoint line, [[maybe_unused]] void* userData) -> std::string
 			    {
 				    auto result = ReadIncludedFile(filename);
 				    if (result.m_Status == Frertex::EIncludeStatus::Failure)
@@ -326,7 +326,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 			std::string output = Frertex::FormatMessage(
 			    message,
 			    includedFilenames,
-			    [](std::string_view filename, Frertex::SourcePoint line) -> std::string
+			    [](std::string_view filename, Frertex::SourcePoint line, [[maybe_unused]] void* userData) -> std::string
 			    {
 				    auto result = ReadIncludedFile(filename);
 				    if (result.m_Status == Frertex::EIncludeStatus::Failure)
@@ -361,6 +361,44 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 	Frertex::WriteFILToFile("output.fil", fil);
 
 	std::cout << Frertex::Utils::ProfilerToString();
+
+	std::vector<std::string> messageLines;
+	messageLines.emplace_back("\tOh no a tab O_O");
+	messageLines.emplace_back("Some text with idk");
+	messageLines.emplace_back("Yeah just a third line");
+	std::vector<Frertex::Message> messages;
+	messages.emplace_back(Frertex::EMessageType::Warning, Frertex::SourceSpan { { 1, 0, 4 }, { 2, 0, 5 } }, Frertex::SourcePoint { 1, 0, 4 }, "");
+	messages.emplace_back(Frertex::EMessageType::Warning, Frertex::SourceSpan { { 4, 0, 7 }, { 9, 0, 12 } }, Frertex::SourcePoint { 7, 0, 10 }, "");
+	messages.emplace_back(Frertex::EMessageType::Warning, Frertex::SourceSpan { { 9, 0, 12 }, { 11, 0, 14 } }, Frertex::SourcePoint { 11, 0, 14 }, "");
+
+	messages.emplace_back(Frertex::EMessageType::Warning, Frertex::SourceSpan { { 1, 0, 4 }, { 46, 2, 10 } }, Frertex::SourcePoint { 1, 0, 4 }, "");
+	messages.emplace_back(Frertex::EMessageType::Warning, Frertex::SourceSpan { { 1, 0, 4 }, { 46, 2, 10 } }, Frertex::SourcePoint { 4, 0, 7 }, "");
+	messages.emplace_back(Frertex::EMessageType::Warning, Frertex::SourceSpan { { 1, 0, 4 }, { 46, 2, 10 } }, Frertex::SourcePoint { 20, 1, 3 }, "");
+	messages.emplace_back(Frertex::EMessageType::Warning, Frertex::SourceSpan { { 1, 0, 4 }, { 46, 2, 10 } }, Frertex::SourcePoint { 44, 2, 8 }, "");
+	messages.emplace_back(Frertex::EMessageType::Warning, Frertex::SourceSpan { { 1, 0, 4 }, { 46, 2, 10 } }, Frertex::SourcePoint { 46, 2, 10 }, "");
+
+	for (auto& message : messages)
+	{
+		std::string output = Frertex::FormatMessage(
+		    message,
+		    { "DummyFile.frer" },
+		    [](std::string_view filename, Frertex::SourcePoint line, void* userData) -> std::string
+		    {
+			    std::vector<std::string>& lines = *reinterpret_cast<std::vector<std::string>*>(userData);
+			    return line.m_Line < lines.size() ? lines[line.m_Line] : "";
+		    },
+		    &messageLines);
+		switch (message.m_Type)
+		{
+		case Frertex::EMessageType::Warning:
+			std::cout << output << '\n';
+			break;
+		case Frertex::EMessageType::Error:
+			errored = true;
+			std::cerr << output << '\n';
+			break;
+		}
+	}
 
 #if BUILD_IS_SYSTEM_WINDOWS
 	SetConsoleOutputCP(defaultCP);

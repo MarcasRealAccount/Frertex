@@ -14,6 +14,7 @@ namespace Frertex
 	{
 		Unknown = 0,
 		Whitespace,
+		Tab,
 		Newline,
 		NonDigit,
 		Digit,
