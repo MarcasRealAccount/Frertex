@@ -96,15 +96,15 @@ namespace Frertex
 		case '-': return ECharacterClass::Symbol;
 		case '.': return ECharacterClass::Symbol;
 		case '/': return ECharacterClass::Symbol;
-		case '0':
-		case '1':
-		case '2':
-		case '3':
-		case '4':
-		case '5':
-		case '6':
-		case '7':
-		case '8':
+		case '0': return ECharacterClass::Digit;
+		case '1': return ECharacterClass::Digit;
+		case '2': return ECharacterClass::Digit;
+		case '3': return ECharacterClass::Digit;
+		case '4': return ECharacterClass::Digit;
+		case '5': return ECharacterClass::Digit;
+		case '6': return ECharacterClass::Digit;
+		case '7': return ECharacterClass::Digit;
+		case '8': return ECharacterClass::Digit;
 		case '9': return ECharacterClass::Digit;
 		case ':': return ECharacterClass::Symbol;
 		case ';': return ECharacterClass::Symbol;
@@ -113,31 +113,31 @@ namespace Frertex
 		case '>': return ECharacterClass::Symbol;
 		case '?': return ECharacterClass::Symbol;
 		case '@': return ECharacterClass::Symbol;
-		case 'A':
-		case 'B':
-		case 'C':
-		case 'D':
-		case 'E':
-		case 'F':
-		case 'G':
-		case 'H':
-		case 'I':
-		case 'J':
-		case 'K':
-		case 'L':
-		case 'M':
-		case 'N':
-		case 'O':
-		case 'P':
-		case 'Q':
-		case 'R':
-		case 'S':
-		case 'T':
-		case 'U':
-		case 'V':
-		case 'W':
-		case 'X':
-		case 'Y':
+		case 'A': return ECharacterClass::NonDigit;
+		case 'B': return ECharacterClass::NonDigit;
+		case 'C': return ECharacterClass::NonDigit;
+		case 'D': return ECharacterClass::NonDigit;
+		case 'E': return ECharacterClass::NonDigit;
+		case 'F': return ECharacterClass::NonDigit;
+		case 'G': return ECharacterClass::NonDigit;
+		case 'H': return ECharacterClass::NonDigit;
+		case 'I': return ECharacterClass::NonDigit;
+		case 'J': return ECharacterClass::NonDigit;
+		case 'K': return ECharacterClass::NonDigit;
+		case 'L': return ECharacterClass::NonDigit;
+		case 'M': return ECharacterClass::NonDigit;
+		case 'N': return ECharacterClass::NonDigit;
+		case 'O': return ECharacterClass::NonDigit;
+		case 'P': return ECharacterClass::NonDigit;
+		case 'Q': return ECharacterClass::NonDigit;
+		case 'R': return ECharacterClass::NonDigit;
+		case 'S': return ECharacterClass::NonDigit;
+		case 'T': return ECharacterClass::NonDigit;
+		case 'U': return ECharacterClass::NonDigit;
+		case 'V': return ECharacterClass::NonDigit;
+		case 'W': return ECharacterClass::NonDigit;
+		case 'X': return ECharacterClass::NonDigit;
+		case 'Y': return ECharacterClass::NonDigit;
 		case 'Z': return ECharacterClass::NonDigit;
 		case '[': return ECharacterClass::Symbol;
 		case '\\': return ECharacterClass::Symbol;
@@ -145,31 +145,31 @@ namespace Frertex
 		case '^': return ECharacterClass::Symbol;
 		case '_': return ECharacterClass::Symbol;
 		case '`': return ECharacterClass::Symbol;
-		case 'a':
-		case 'b':
-		case 'c':
-		case 'd':
-		case 'e':
-		case 'f':
-		case 'g':
-		case 'h':
-		case 'i':
-		case 'j':
-		case 'k':
-		case 'l':
-		case 'm':
-		case 'n':
-		case 'o':
-		case 'p':
-		case 'q':
-		case 'r':
-		case 's':
-		case 't':
-		case 'u':
-		case 'v':
-		case 'w':
-		case 'x':
-		case 'y':
+		case 'a': return ECharacterClass::NonDigit;
+		case 'b': return ECharacterClass::NonDigit;
+		case 'c': return ECharacterClass::NonDigit;
+		case 'd': return ECharacterClass::NonDigit;
+		case 'e': return ECharacterClass::NonDigit;
+		case 'f': return ECharacterClass::NonDigit;
+		case 'g': return ECharacterClass::NonDigit;
+		case 'h': return ECharacterClass::NonDigit;
+		case 'i': return ECharacterClass::NonDigit;
+		case 'j': return ECharacterClass::NonDigit;
+		case 'k': return ECharacterClass::NonDigit;
+		case 'l': return ECharacterClass::NonDigit;
+		case 'm': return ECharacterClass::NonDigit;
+		case 'n': return ECharacterClass::NonDigit;
+		case 'o': return ECharacterClass::NonDigit;
+		case 'p': return ECharacterClass::NonDigit;
+		case 'q': return ECharacterClass::NonDigit;
+		case 'r': return ECharacterClass::NonDigit;
+		case 's': return ECharacterClass::NonDigit;
+		case 't': return ECharacterClass::NonDigit;
+		case 'u': return ECharacterClass::NonDigit;
+		case 'v': return ECharacterClass::NonDigit;
+		case 'w': return ECharacterClass::NonDigit;
+		case 'x': return ECharacterClass::NonDigit;
+		case 'y': return ECharacterClass::NonDigit;
 		case 'z': return ECharacterClass::NonDigit;
 		case '{': return ECharacterClass::Symbol;
 		case '|': return ECharacterClass::Symbol;

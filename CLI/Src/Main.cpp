@@ -160,6 +160,33 @@ void PrintAST(const Frertex::AST& ast)
 	std::cout << str.str() << '\n';
 }
 
+struct Timer
+{
+	using Clock = std::chrono::high_resolution_clock;
+
+	void begin()
+	{
+		m_Start = Clock::now();
+	}
+
+	void end()
+	{
+		m_End = Clock::now();
+	}
+
+	float getTime() const
+	{
+		return std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(m_End - m_Start).count();
+	}
+
+	std::string formatTime(Frertex::Utils::CopyMovable<std::string>&& name) const
+	{
+		return fmt::format("{} finished in {} ms\n", name.get(), getTime());
+	}
+
+	Clock::time_point m_Start, m_End;
+};
+
 int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 {
 #if BUILD_IS_SYSTEM_WINDOWS
@@ -167,9 +194,19 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 	SetConsoleOutputCP(65001);
 #endif
 
+	Timer timer {};
+	std::ostringstream times;
+
+	timer.begin();
 	auto                  tokens = Frertex::Tokenize(ReadIncludedFile("Test.frer").m_Source);
+	timer.end();
+	times << timer.formatTime("Tokenizer");
+
+	timer.begin();
 	Frertex::Preprocessor preprocessor { &ReadIncludedFile };
 	tokens = preprocessor.process(std::move(tokens), "Test.frer");
+	timer.end();
+	times << timer.formatTime("Preprocessor");
 
 	bool errored = false;
 	if (!preprocessor.getMessages().empty())
@@ -266,8 +303,12 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 	//}
 	//std::cout << str.str() << "\n";
 
+	timer.begin();
 	Frertex::Lexer lexer {};
 	auto           ast = lexer.lex(std::move(tokens));
+	timer.end();
+	times << timer.formatTime("Lexer");
+
 	if (!lexer.getMessages().empty())
 	{
 		auto& includedFilenames = preprocessor.getIncludeFilenames();
@@ -315,8 +356,12 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 	//	PrintAST(ast);
 	//std::cout << '\n';
 
+	timer.begin();
 	Frertex::Compiler compiler { preprocessor.getIncludeFilenames() };
 	auto              fil = compiler.compile(std::move(ast));
+	timer.end();
+	times << timer.formatTime("Compiler");
+
 	if (!compiler.getMessages().empty())
 	{
 		auto& includedFilenames = compiler.getIncludedFilenames();
@@ -399,6 +444,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 			break;
 		}
 	}
+
+	std::cout << times.str();
 
 #if BUILD_IS_SYSTEM_WINDOWS
 	SetConsoleOutputCP(defaultCP);
