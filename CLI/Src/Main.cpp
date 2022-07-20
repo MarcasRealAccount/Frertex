@@ -194,11 +194,11 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 	SetConsoleOutputCP(65001);
 #endif
 
-	Timer timer {};
+	Timer              timer {};
 	std::ostringstream times;
 
 	timer.begin();
-	auto                  tokens = Frertex::Tokenize(ReadIncludedFile("Test.frer").m_Source);
+	auto tokens = Frertex::Tokenize(ReadIncludedFile("Test.frer").m_Source);
 	timer.end();
 	times << timer.formatTime("Tokenizer");
 
