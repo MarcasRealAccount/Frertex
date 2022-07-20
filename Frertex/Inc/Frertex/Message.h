@@ -17,7 +17,7 @@ namespace Frertex
 	struct Message
 	{
 		Message(EMessageType type, SourceSpan span, SourcePoint point, Utils::CopyMovable<std::string>&& message)
-			: m_Type(type), m_Span(span), m_Point(point), m_Message(message.get()) {}
+		    : m_Type(type), m_Span(span), m_Point(point), m_Message(message.get()) {}
 
 		EMessageType m_Type;
 		SourceSpan   m_Span;

@@ -76,12 +76,21 @@ namespace Frertex
 	struct FILEntrypoint
 	{
 	public:
+		FILEntrypoint(EEntrypointType type, std::uint64_t labelID)
+		    : m_Type(type), m_LabelID(labelID) {}
+
+	public:
 		EEntrypointType m_Type;
 		std::uint64_t   m_LabelID;
 	};
 
 	struct FILLabel
 	{
+	public:
+		FILLabel(std::uint64_t nameOffset, std::uint64_t nameLength, std::uint64_t codeOffset, std::uint64_t length)
+		    : m_NameOffset(nameOffset), m_NameLength(nameLength), m_CodeOffset(codeOffset), m_Length(length) {}
+
+
 	public:
 		std::uint64_t m_NameOffset, m_NameLength;
 		std::uint64_t m_CodeOffset, m_Length;
@@ -90,12 +99,20 @@ namespace Frertex
 	struct FILLabelRef
 	{
 	public:
+		FILLabelRef(std::uint64_t labelID, std::uint64_t codeOffset, std::uint64_t length)
+		    : m_LabelID(labelID), m_CodeOffset(codeOffset), m_Length(length) {}
+
+	public:
 		std::uint64_t m_LabelID;
 		std::uint64_t m_CodeOffset, m_Length;
 	};
 
 	struct FILLine
 	{
+	public:
+		FILLine(std::uint64_t codeOffset, std::uint64_t line, std::uint64_t filenameOffset, std::uint64_t filenameLength)
+		    : m_CodeOffset(codeOffset), m_Line(line), m_FilenameOffset(filenameOffset), m_FilenameLength(filenameLength) {}
+
 	public:
 		std::uint64_t m_CodeOffset;
 		std::uint64_t m_Line;

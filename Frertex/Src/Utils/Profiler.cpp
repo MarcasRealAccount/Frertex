@@ -1,5 +1,6 @@
 #include "Frertex/Utils/Profiler.h"
 
+#include <sstream>
 #include <unordered_map>
 #include <vector>
 
@@ -50,6 +51,11 @@ namespace Frertex::Utils
 
 		struct DataPoint
 		{
+		public:
+			DataPoint(std::uint64_t total, std::uint64_t longest, std::uint64_t shortest, decltype(s_ProfilerDatas)::iterator iterator)
+			    : m_Total(total), m_Longest(longest), m_Shortest(shortest), m_Iterator(iterator) {}
+
+		public:
 			std::uint64_t m_Total, m_Longest, m_Shortest;
 
 			decltype(s_ProfilerDatas)::iterator m_Iterator;

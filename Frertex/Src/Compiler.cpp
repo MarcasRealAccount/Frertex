@@ -34,6 +34,8 @@ namespace Frertex
 			case EASTNodeType::FunctionDeclaration:
 				compileFunctionDeclaration(declaration);
 				break;
+			default:
+				break;
 			}
 		}
 
@@ -104,7 +106,7 @@ namespace Frertex
 				auto itr = labelLUT.find(label.m_Name);
 				if (itr == labelLUT.end())
 				{
-					labelLUT.insert_or_assign(label.m_Name, LabelLUT { id });
+					labelLUT.insert_or_assign(label.m_Name, LabelLUT { id, {} });
 				}
 				else
 				{
@@ -234,6 +236,8 @@ namespace Frertex
 				getFunctionDefinitions(*declaration.getChild(4), function.m_Name + "::");
 				break;
 			}
+			default:
+				break;
 			}
 		}
 	}

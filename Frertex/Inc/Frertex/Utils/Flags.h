@@ -189,4 +189,4 @@ namespace Frertex::Utils
 	public:
 		ValueT m_Value;
 	};
-} // namespace Utils
+} // namespace Frertex::Utils
