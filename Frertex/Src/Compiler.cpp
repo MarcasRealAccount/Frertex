@@ -96,6 +96,46 @@ namespace Frertex
 			std::uint64_t labelID = static_cast<std::uint64_t>(fil.m_Labels.size());
 			fil.m_Labels.emplace_back(nameStart, nameLength, codeStart, codeLength);
 
+			std::vector<FILEntrypointParameter> inputs;
+			std::vector<FILEntrypointParameter> outputs;
+			for (auto& parameter : function.m_Parameters)
+			{
+				ETypeQualifier qualifier = ETypeQualifier::None;
+				for (auto& q : parameter.m_Qualifiers)
+				{
+					if (qualifier == ETypeQualifier::None)
+						qualifier = q;
+					else
+						qualifier = static_cast<ETypeQualifier>(static_cast<std::uint32_t>(qualifier) | static_cast<std::uint32_t>(q));
+				}
+
+				if (qualifier == ETypeQualifier::In)
+				{
+					ETypeIDs typeID = getBuiltinTypeID(parameter.m_Typename);
+					if (typeID == ETypeIDs::BuiltinEnd)
+					{
+						addError({}, {}, "User defined types not supported yet!!!");
+						continue;
+					}
+					inputs.emplace_back(static_cast<std::uint64_t>(typeID));
+				}
+				else if (qualifier == ETypeQualifier::Out)
+				{
+					ETypeIDs typeID = getBuiltinTypeID(parameter.m_Typename);
+					if (typeID == ETypeIDs::BuiltinEnd)
+					{
+						addError({}, {}, "User defined types not supported yet!!!");
+						continue;
+					}
+					outputs.emplace_back(static_cast<std::uint64_t>(typeID));
+				}
+				else
+				{
+					addError({}, {}, "Type qualifier not supported in entrypoints");
+					continue;
+				}
+			}
+
 			for (auto& label : function.m_Labels)
 			{
 				std::uint64_t labelNameStart  = static_cast<std::uint64_t>(fil.m_Strings.size());
@@ -140,7 +180,7 @@ namespace Frertex
 
 			functionLUT[i] = { nameStart, nameLength, codeStart, codeLength, labelID };
 			if (function.m_Type != EEntrypointType::None)
-				fil.m_Entrypoints.emplace_back(function.m_Type, labelID);
+				fil.m_Entrypoints.emplace_back(function.m_Type, labelID, std::move(inputs), std::move(outputs));
 		}
 
 		// Resolve Label Refs
@@ -250,53 +290,115 @@ namespace Frertex
 
 		EEntrypointType type = EEntrypointType::None;
 
-		auto& attributes = *node.getChild(0);
-		for (auto& attribute : attributes.getChildren())
+		std::vector<FunctionParameter> parameters;
+
 		{
-			auto& identifier = *attribute.getChild(0);
-			auto& str        = identifier.getToken().m_Str;
-			if (type == EEntrypointType::None)
+			auto& attributes = *node.getChild(0);
+			for (auto& attribute : attributes.getChildren())
 			{
-				if (str == "VertexShader")
-					type = EEntrypointType::VertexShader;
-				else if (str == "TessellationControlShader")
-					type = EEntrypointType::TessellationControlShader;
-				else if (str == "TessellationEvaluationShader")
-					type = EEntrypointType::TessellationEvaluationShader;
-				else if (str == "GeometryShader")
-					type = EEntrypointType::GeometryShader;
-				else if (str == "FragmentShader")
-					type = EEntrypointType::FragmentShader;
-				else if (str == "ComputeShader")
-					type = EEntrypointType::ComputeShader;
-				else if (str == "RTRayGenShader")
-					type = EEntrypointType::RTRayGenShader;
-				else if (str == "RTAnyHitShader")
-					type = EEntrypointType::RTAnyHitShader;
-				else if (str == "RTClosestHitShader")
-					type = EEntrypointType::RTClosestHitShader;
-				else if (str == "RTMissShader")
-					type = EEntrypointType::RTMissShader;
-				else if (str == "RTIntersectionShader")
-					type = EEntrypointType::RTIntersectionShader;
-				else if (str == "RTCallableShader")
-					type = EEntrypointType::RTCallableShader;
-				else if (str == "NVTaskShader")
-					type = EEntrypointType::NVTaskShader;
-				else if (str == "NVMeshShader")
-					type = EEntrypointType::NVMeshShader;
+				auto& identifier = *attribute.getChild(0);
+				auto& str        = identifier.getToken().m_Str;
+				if (type == EEntrypointType::None)
+				{
+					if (str == "VertexShader")
+						type = EEntrypointType::VertexShader;
+					else if (str == "TessellationControlShader")
+						type = EEntrypointType::TessellationControlShader;
+					else if (str == "TessellationEvaluationShader")
+						type = EEntrypointType::TessellationEvaluationShader;
+					else if (str == "GeometryShader")
+						type = EEntrypointType::GeometryShader;
+					else if (str == "FragmentShader")
+						type = EEntrypointType::FragmentShader;
+					else if (str == "ComputeShader")
+						type = EEntrypointType::ComputeShader;
+					else if (str == "RTRayGenShader")
+						type = EEntrypointType::RTRayGenShader;
+					else if (str == "RTAnyHitShader")
+						type = EEntrypointType::RTAnyHitShader;
+					else if (str == "RTClosestHitShader")
+						type = EEntrypointType::RTClosestHitShader;
+					else if (str == "RTMissShader")
+						type = EEntrypointType::RTMissShader;
+					else if (str == "RTIntersectionShader")
+						type = EEntrypointType::RTIntersectionShader;
+					else if (str == "RTCallableShader")
+						type = EEntrypointType::RTCallableShader;
+					else if (str == "NVTaskShader")
+						type = EEntrypointType::NVTaskShader;
+					else if (str == "NVMeshShader")
+						type = EEntrypointType::NVMeshShader;
+				}
+			}
+		}
+
+		{
+			auto& arguments = *node.getChild(3);
+			for (auto& argument : arguments.getChildren())
+			{
+				auto& parameter = parameters.emplace_back(std::vector<ETypeQualifier> {}, 0, "");
+
+				auto& attributes = *argument.getChild(0);
+				for (auto& attribute : attributes.getChildren())
+				{
+					auto& identifier = *attribute.getChild(0);
+					auto& str        = identifier.getToken().m_Str;
+					if (!parameter.m_BuiltinTypeID)
+					{
+						if (str == "Position")
+							parameter.m_BuiltinTypeID = static_cast<std::uint32_t>(ETypeIDs::BuiltinPosition);
+						else if (str == "PointSize")
+							parameter.m_BuiltinTypeID = static_cast<std::uint32_t>(ETypeIDs::BuiltinPointSize);
+					}
+				}
+
+				auto& typeName       = *argument.getChild(1);
+				auto& typeQualifiers = *typeName.getChild(0);
+				for (auto& typeQualifier : typeQualifiers.getChildren())
+				{
+					auto& str = typeQualifier.getToken().m_Str;
+					if (str == "in")
+						parameter.m_Qualifiers.emplace_back(ETypeQualifier::In);
+					else if (str == "out")
+						parameter.m_Qualifiers.emplace_back(ETypeQualifier::Out);
+					else if (str == "inout")
+						parameter.m_Qualifiers.emplace_back(ETypeQualifier::InOut);
+				}
+
+				parameter.m_Typename = typeName.getChild(1)->getToken().m_Str;
+				if (parameter.m_BuiltinTypeID)
+				{
+					auto builtinTypeID = getBuiltinTypeID(parameter.m_Typename);
+					switch (parameter.m_BuiltinTypeID)
+					{
+					case static_cast<std::uint32_t>(ETypeIDs::BuiltinPosition):
+						if (builtinTypeID != ETypeIDs::Float4)
+						{
+							addError(typeName.getChild(1)->getToken().m_Span, typeName.getChild(1)->getToken().m_Span.m_Start, "[[Position]] attribute requires an 'out float4' type parameter");
+						}
+						break;
+					case static_cast<std::uint32_t>(ETypeIDs::BuiltinPointSize):
+						if (builtinTypeID != ETypeIDs::Float)
+						{
+							addError(typeName.getChild(1)->getToken().m_Span, typeName.getChild(1)->getToken().m_Span.m_Start, "[[PointSize]] attribute requires an 'out float' type parameter");
+						}
+						break;
+					}
+				}
 			}
 		}
 
 		std::string name = prefix + node.getChild(2)->getToken().m_Str;
 		CodeBuffer  code;
 		compileStatements(*node.getChild(4), code, name + "::");
-		m_FunctionDeclarations.emplace_back(std::move(name), type, code.getLabels(), code.getLabelRefs(), code.getCode(), code.getLines());
+		m_FunctionDeclarations.emplace_back(std::move(name), type, std::move(parameters), code.getLabels(), code.getLabelRefs(), code.getCode(), code.getLines());
 	}
 
-	void Compiler::compileAssignmentExpression(ASTNode& node, CodeBuffer& buffer)
+	void Compiler::compileAssignmentExpression(ASTNode& node, [[maybe_unused]] CodeBuffer& buffer)
 	{
 		PROFILE_FUNC;
+
+		// TODO(MarcasRealAccount): Implement assignment expressions
 
 		addWarning(node.getToken().m_Span, node.getToken().m_Span.m_Start, "How compile assignment expression???");
 	}
@@ -338,5 +440,97 @@ namespace Frertex
 				break;
 			}
 		}
+	}
+
+	ETypeIDs Compiler::getBuiltinTypeID(std::string_view type) const
+	{
+		PROFILE_FUNC;
+
+		if (type == "void")
+			return ETypeIDs::Void;
+
+		ETypeIDs    baseType = ETypeIDs::Void;
+		std::size_t offset   = 0;
+
+		if (type.starts_with("bool"))
+		{
+			baseType = ETypeIDs::Bool;
+			offset += 4;
+		}
+		else if (type.starts_with("byte"))
+		{
+			baseType = ETypeIDs::Byte;
+			offset += 4;
+		}
+		else if (type.starts_with("ubyte"))
+		{
+			baseType = ETypeIDs::UByte;
+			offset += 5;
+		}
+		else if (type.starts_with("short"))
+		{
+			baseType = ETypeIDs::Short;
+			offset += 5;
+		}
+		else if (type.starts_with("ushort"))
+		{
+			baseType = ETypeIDs::UShort;
+			offset += 6;
+		}
+		else if (type.starts_with("int"))
+		{
+			baseType = ETypeIDs::Int;
+			offset += 3;
+		}
+		else if (type.starts_with("uint"))
+		{
+			baseType = ETypeIDs::UInt;
+			offset += 4;
+		}
+		else if (type.starts_with("long"))
+		{
+			baseType = ETypeIDs::Long;
+			offset += 4;
+		}
+		else if (type.starts_with("ulong"))
+		{
+			baseType = ETypeIDs::ULong;
+			offset += 5;
+		}
+		else if (type.starts_with("half"))
+		{
+			baseType = ETypeIDs::Half;
+			offset += 4;
+		}
+		else if (type.starts_with("float"))
+		{
+			baseType = ETypeIDs::Float;
+			offset += 5;
+		}
+		else if (type.starts_with("double"))
+		{
+			baseType = ETypeIDs::Double;
+			offset += 6;
+		}
+		else
+		{
+			return ETypeIDs::BuiltinEnd;
+		}
+
+		std::uint64_t rows = 0, columns = 0;
+		if (type.size() - offset > 0 && type[offset] >= '1' && type[offset] <= '4')
+		{
+			rows = type[offset] - '1';
+			++offset;
+			if (type.size() - offset > 1 && type[offset] == 'x' && type[offset + 1] >= '1' && type[offset + 2] <= '4')
+			{
+				columns = type[offset + 1] - '1';
+				offset += 2;
+			}
+		}
+
+		std::uint64_t baseTypeId = static_cast<std::uint64_t>(baseType);
+
+		return static_cast<ETypeIDs>((baseTypeId & ~0xFFFF) | (baseTypeId & 0xFFFF) * (rows + 1) * (columns + 1) | (rows << 20) | (columns << 22));
 	}
 } // namespace Frertex

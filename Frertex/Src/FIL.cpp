@@ -1,126 +1,92 @@
 #include "Frertex/FIL.h"
+#include "Frertex/Utils/Buffer.h"
 #include "Frertex/Utils/Profiler.h"
 
 #include <fstream>
 
 namespace Frertex
 {
-	struct Buffer
+	std::string TypeIDToString(ETypeIDs type)
 	{
-	public:
-		void pushU8(std::uint8_t value)
+		if (type == ETypeIDs::Void)
+			return "void";
+
+		if (static_cast<std::uint64_t>(type) < 0x8000'0000)
 		{
-			PROFILE_FUNC;
+			std::uint64_t rows    = ((static_cast<std::uint64_t>(type) >> 20) & 3) + 1;
+			std::uint64_t columns = ((static_cast<std::uint64_t>(type) >> 22) & 3) + 1;
 
-			m_Buffer.emplace_back(value);
-		}
+			std::string   str        = "void";
+			std::uint64_t baseTypeID = static_cast<std::uint64_t>(type);
 
-		void pushU16(std::uint16_t value)
-		{
-			PROFILE_FUNC;
-
-			m_Buffer.emplace_back(static_cast<std::uint8_t>(value & 0xFF));
-			m_Buffer.emplace_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
-		}
-
-		void pushU32(std::uint32_t value)
-		{
-			PROFILE_FUNC;
-
-			m_Buffer.emplace_back(static_cast<std::uint8_t>(value & 0xFF));
-			m_Buffer.emplace_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
-			m_Buffer.emplace_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
-			m_Buffer.emplace_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
-		}
-
-		void pushU64(std::uint64_t value)
-		{
-			PROFILE_FUNC;
-
-			m_Buffer.emplace_back(static_cast<std::uint8_t>(value & 0xFF));
-			m_Buffer.emplace_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
-			m_Buffer.emplace_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
-			m_Buffer.emplace_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
-			m_Buffer.emplace_back(static_cast<std::uint8_t>((value >> 32) & 0xFF));
-			m_Buffer.emplace_back(static_cast<std::uint8_t>((value >> 40) & 0xFF));
-			m_Buffer.emplace_back(static_cast<std::uint8_t>((value >> 48) & 0xFF));
-			m_Buffer.emplace_back(static_cast<std::uint8_t>((value >> 56) & 0xFF));
-		}
-
-		template <class Iterator>
-		void pushU8s(Iterator begin, Iterator end)
-		{
-			PROFILE_FUNC;
-
-			if (m_Buffer.capacity() - m_Buffer.size() < static_cast<std::size_t>(end - begin))
-				reserve(m_Buffer.capacity() + (end - begin));
-
-			while (begin != end)
+			ETypeIDs baseType = static_cast<ETypeIDs>((baseTypeID & 0x7'0000) | ((baseTypeID & 0xFFFF) / (rows * columns)));
+			switch (baseType)
 			{
-				pushU8(*begin);
-				++begin;
+			case ETypeIDs::Bool:
+				str = "bool";
+				break;
+			case ETypeIDs::Byte:
+				str = "byte";
+				break;
+			case ETypeIDs::UByte:
+				str = "ubyte";
+				break;
+			case ETypeIDs::Short:
+				str = "short";
+				break;
+			case ETypeIDs::UShort:
+				str = "ushort";
+				break;
+			case ETypeIDs::Int:
+				str = "int";
+				break;
+			case ETypeIDs::UInt:
+				str = "uint";
+				break;
+			case ETypeIDs::Long:
+				str = "long";
+				break;
+			case ETypeIDs::ULong:
+				str = "ulong";
+				break;
+			case ETypeIDs::Half:
+				str = "half";
+				break;
+			case ETypeIDs::Float:
+				str = "float";
+				break;
+			case ETypeIDs::Double:
+				str = "double";
+				break;
+			default: return {};
+			}
+
+			if (rows != 1)
+				str += std::to_string(rows);
+			if (columns != 1)
+				str += "x" + std::to_string(columns);
+			return str;
+		}
+		else if (static_cast<std::uint64_t>(type) < 0x8000'0000'0000'0000)
+		{
+			switch (type)
+			{
+			case ETypeIDs::BuiltinPosition: return "BuiltinPosition";
+			case ETypeIDs::BuiltinPointSize: return "BuiltinPointSize";
+			default: return {};
 			}
 		}
-
-		template <class Iterator>
-		void pushU16s(Iterator begin, Iterator end)
+		else
 		{
-			PROFILE_FUNC;
-
-			if (m_Buffer.capacity() - m_Buffer.size() < static_cast<std::size_t>(end - begin))
-				reserve(m_Buffer.capacity() + (end - begin));
-
-			while (begin != end)
-			{
-				pushU16(*begin);
-				++begin;
-			}
+			return {};
 		}
-
-		template <class Iterator>
-		void pushU32s(Iterator begin, Iterator end)
-		{
-			PROFILE_FUNC;
-
-			if (m_Buffer.capacity() - m_Buffer.size() < static_cast<std::size_t>(end - begin))
-				reserve(m_Buffer.capacity() + (end - begin));
-
-			while (begin != end)
-			{
-				pushU32(*begin);
-				++begin;
-			}
-		}
-
-		template <class Iterator>
-		void pushU64s(Iterator begin, Iterator end)
-		{
-			PROFILE_FUNC;
-
-			if (m_Buffer.capacity() - m_Buffer.size() < static_cast<std::size_t>(end - begin))
-				reserve(m_Buffer.capacity() + (end - begin));
-
-			while (begin != end)
-			{
-				pushU64(*begin);
-				++begin;
-			}
-		}
-
-		void reserve(std::size_t expected) { m_Buffer.reserve(expected); }
-
-		std::vector<std::uint8_t>&& getBuffer() { return std::move(m_Buffer); }
-
-	private:
-		std::vector<std::uint8_t> m_Buffer;
-	};
+	}
 
 	std::vector<std::uint8_t> GetFILBinary(const FIL& fil)
 	{
 		PROFILE_FUNC;
 
-		Buffer binary;
-		binary.reserve(4 + 4 + 8 + fil.m_Entrypoints.size() * 12 + 8 + fil.m_Strings.size() + 8 + fil.m_Labels.size() * 32 + 8 + fil.m_LabelRefs.size() * 24 + 8 + fil.m_Code.size() * 4 + 8 + fil.m_Lines.size() * 32);
+		Utils::Buffer binary;
 		binary.pushU32(0x4C49'4600); // Magic "\0FIL"
 		binary.pushU32(0x0000'0000); // Version 0.0.0
 
@@ -130,10 +96,39 @@ namespace Frertex
 			binary.pushU32(static_cast<std::uint32_t>(entrypoint.m_Type));
 			binary.pushU32(0); // Reserved
 			binary.pushU64(entrypoint.m_LabelID);
+			binary.pushU64(entrypoint.m_Inputs.size());
+			for (auto& parameter : entrypoint.m_Inputs)
+				binary.pushU64(parameter.m_TypeID);
+			binary.pushU64(entrypoint.m_Outputs.size());
+			for (auto& parameter : entrypoint.m_Outputs)
+				binary.pushU64(parameter.m_TypeID);
+		}
+
+		binary.pushU64(fil.m_Functions.size());
+		for (auto& function : fil.m_Functions)
+		{
+			binary.pushU64(function.m_LabelID);
+			binary.pushU64(function.m_ReturnTypeID);
+			binary.pushU64(function.m_Parameters.size());
+			for (auto& parameter : function.m_Parameters)
+			{
+				binary.pushU64(parameter.m_Qualifiers.size());
+				for (auto qualifier : parameter.m_Qualifiers)
+					binary.pushU32(static_cast<std::uint32_t>(qualifier));
+				if ((parameter.m_Qualifiers.size() & 1) == 1)
+					binary.pushU32(0); // Padding
+				binary.pushU64(parameter.m_TypeID);
+			}
 		}
 
 		binary.pushU64(fil.m_Strings.size());
 		binary.pushU8s(fil.m_Strings.begin(), fil.m_Strings.end());
+
+		binary.pushU64(fil.m_Types.size());
+		for ([[maybe_unused]] auto& type : fil.m_Types)
+		{
+			// TODO(MarcasRealAccount): Implement FIL types
+		}
 
 		binary.pushU64(fil.m_Labels.size());
 		for (auto& label : fil.m_Labels)

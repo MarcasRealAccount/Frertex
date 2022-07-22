@@ -28,6 +28,8 @@ namespace Frertex
 		void compileExpression(ASTNode& node, CodeBuffer& buffer);
 		void compileStatements(ASTNode& root, CodeBuffer& buffer, const std::string& prefix = "");
 
+		ETypeIDs getBuiltinTypeID(std::string_view type) const;
+
 	private:
 		std::vector<Message> m_Messages;
 
