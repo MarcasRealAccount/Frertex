@@ -21,14 +21,14 @@ namespace Frertex
 		std::string    m_Source;
 	};
 
-	using IncludeHandler = IncludeData (*)(std::string_view filename);
+	using IncludeHandler = IncludeData (*)(std::string_view filename, std::string_view originalFilename);
 
 	class Preprocessor
 	{
 	public:
-		Preprocessor(IncludeHandler includeHandler);
+		Preprocessor(Sources* sources, IncludeHandler includeHandler);
 
-		std::vector<Token> process(Utils::CopyMovable<std::vector<Token>>&& tokens, std::string_view filename);
+		std::vector<Token> process(Utils::CopyMovable<std::vector<Token>>&& tokens);
 
 		void addMacro(Utils::CopyMovable<std::string>&& name);
 		void addMacro(Utils::CopyMovable<std::string>&& name, Utils::CopyMovable<std::string>&& value);
@@ -38,16 +38,26 @@ namespace Frertex
 		bool                hasMacro(std::string_view name);
 		std::vector<Token>* getMacro(std::string_view name);
 
-		void addWarning(SourceSpan span, SourcePoint point, Utils::CopyMovable<std::string>&& message);
-		void addError(SourceSpan span, SourcePoint point, Utils::CopyMovable<std::string>&& message);
-
 		bool hasIncludedFile(std::string_view filename);
 
+		void addWarning(std::uint32_t fileID, std::uint32_t sourceID, std::size_t index, std::size_t length, std::size_t point, Utils::CopyMovable<std::string>&& message);
+		void addError(std::uint32_t fileID, std::uint32_t sourceID, std::size_t index, std::size_t length, std::size_t point, Utils::CopyMovable<std::string>&& message);
+		void addWarning(const Token& token, std::size_t point, Utils::CopyMovable<std::string>&& message)
+		{
+			addWarning(token.m_FileID, token.m_SourceID, token.m_Index, token.m_Length, point, message.get());
+		}
+		void addError(const Token& token, std::size_t point, Utils::CopyMovable<std::string>&& message)
+		{
+			addError(token.m_FileID, token.m_SourceID, token.m_Index, token.m_Length, point, message.get());
+		}
+
+		auto  getSources() const { return m_Sources; }
 		auto& getMacros() const { return m_Macros; }
-		auto& getIncludeFilenames() const { return m_IncludedFilenames; }
 		auto& getMessages() const { return m_Messages; }
 
 	private:
+		Sources* m_Sources;
+
 		std::unordered_map<std::string, std::vector<Token>> m_Macros;
 
 		std::vector<std::string> m_IncludedFilenames;

@@ -10,16 +10,20 @@ namespace Frertex
 		switch (type)
 		{
 		case EASTNodeType::Unknown: return "Unknown";
+		case EASTNodeType::IntegerLiteral: return "IntegerLiteral";
+		case EASTNodeType::FloatLiteral: return "FloatLiteral";
 		case EASTNodeType::TranslationUnit: return "TranslationUnit";
 		case EASTNodeType::Operator: return "Operator";
 		case EASTNodeType::TypeQualifier: return "TypeQualifier";
 		case EASTNodeType::TypeQualifiers: return "TypeQualifiers";
 		case EASTNodeType::Identifier: return "Identifier";
 		case EASTNodeType::Typename: return "Typename";
-		case EASTNodeType::Attribute: return "Attribute";
-		case EASTNodeType::Attributes: return "Attributes";
 		case EASTNodeType::Argument: return "Argument";
 		case EASTNodeType::Arguments: return "Arguments";
+		case EASTNodeType::Attribute: return "Attribute";
+		case EASTNodeType::Attributes: return "Attributes";
+		case EASTNodeType::Parameter: return "Parameter";
+		case EASTNodeType::Parameters: return "Parameters";
 		case EASTNodeType::BracedInitList: return "BracedInitList";
 		case EASTNodeType::AssignmentExpression: return "AssignmentExpression";
 		case EASTNodeType::ExpressionStatement: return "ExpressionStatement";

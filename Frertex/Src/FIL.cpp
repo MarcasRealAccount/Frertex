@@ -82,6 +82,42 @@ namespace Frertex
 		}
 	}
 
+	ETypeIDs TypeIDGetBase(ETypeIDs type)
+	{
+		std::uint64_t typeID = static_cast<std::uint64_t>(type);
+		if (typeID >= 0x8000'0000)
+			return type;
+
+		std::uint64_t rows    = (typeID >> 20) & 0b11;
+		std::uint64_t columns = (typeID >> 22) & 0b11;
+		if (!columns)
+		{
+			if (!rows)
+			{
+				// Base type is itself
+				return type;
+			}
+			else
+			{
+				// Base type is a scalar
+				return static_cast<ETypeIDs>(((typeID & 0xFFFF) / (rows + 1)) | (typeID & ~0xF0'FFFF));
+			}
+		}
+		else
+		{
+			if (!rows)
+			{
+				// Base type is a scalar
+				return static_cast<ETypeIDs>(((typeID & 0xFFFF) / (columns + 1)) | (typeID & ~0xF0'FFFF));
+			}
+			else
+			{
+				// Base type is a vector
+				return static_cast<ETypeIDs>(((typeID & 0xFFFF) / (columns + 1)) | (typeID & ~0xC0'FFFF));
+			}
+		}
+	}
+
 	std::vector<std::uint8_t> GetFILBinary(const FIL& fil)
 	{
 		PROFILE_FUNC;
@@ -98,10 +134,16 @@ namespace Frertex
 			binary.pushU64(entrypoint.m_LabelID);
 			binary.pushU64(entrypoint.m_Inputs.size());
 			for (auto& parameter : entrypoint.m_Inputs)
+			{
+				binary.pushU64(parameter.m_Location);
 				binary.pushU64(parameter.m_TypeID);
+			}
 			binary.pushU64(entrypoint.m_Outputs.size());
 			for (auto& parameter : entrypoint.m_Outputs)
+			{
+				binary.pushU64(parameter.m_Location);
 				binary.pushU64(parameter.m_TypeID);
+			}
 		}
 
 		binary.pushU64(fil.m_Functions.size());

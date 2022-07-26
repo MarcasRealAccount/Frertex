@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "Frertex/FIL.h"
+
 namespace Frertex::Transpilers::SPIRV
 {
 	enum class EExecutionModel : std::uint32_t
@@ -28,6 +30,8 @@ namespace Frertex::Transpilers::SPIRV
 		CallableNV,
 		CallableKHR = 5318
 	};
+
+	EExecutionModel EntrypointTypeToExecutionModel(EEntrypointType type);
 
 	enum class EAddressingMode : std::uint32_t
 	{
@@ -159,6 +163,8 @@ namespace Frertex::Transpilers::SPIRV
 		DeviceOnlyINTEL          = 5936,
 		HostOnlyINTEL
 	};
+
+	std::string_view StorageClassToString(EStorageClass storageClass);
 
 	enum class EDim : std::uint32_t
 	{
@@ -347,6 +353,120 @@ namespace Frertex::Transpilers::SPIRV
 		NoCapture,
 		NoWrite,
 		NoReadWrite
+	};
+
+	enum class EDecoration : std::uint32_t
+	{
+		RelaxedPrecision = 0,
+		SpecId,
+		Block,
+		BufferBlock,
+		RowMajor,
+		ColMajor,
+		ArrayStride,
+		MatrixStride,
+		GLSLShared,
+		GLSLPAcked,
+		CPacked,
+		BuiltIn,
+		NoPerspective = 13,
+		Flat,
+		Patch,
+		Centroid,
+		Sample,
+		Invariant,
+		Restrict,
+		Aliased,
+		Volatile,
+		Constant,
+		Coherent,
+		NonWritable,
+		NonReadable,
+		Uniform,
+		UniformId,
+		SaturatedConversion,
+		Stream,
+		Location,
+		Component,
+		Index,
+		Binding,
+		DescriptorSet,
+		Offset,
+		XfbBuffer,
+		XfbStride,
+		FuncParamAttr,
+		FPRoundingMode,
+		RPFastMathMode,
+		LinkageAttributes,
+		NoContraction,
+		InputAttachmentIndex,
+		Alignment,
+		MaxByteOffset,
+		AlignmentId,
+		MaxByteOffsetId,
+		NoSignedWrap = 4469,
+		NoUnsignedWrap,
+		ExplicitInterpAMD           = 4999,
+		OverrideCoverageNV          = 5248,
+		PassthroughNV               = 5250,
+		ViewportRelativeNV          = 5252,
+		SecondaryViewportRelativeNV = 5256,
+		PerPrimitiveNV              = 5271,
+		PerViewNV,
+		PerTaskNV,
+		PerVertexKHR       = 5285,
+		PerVertexNV        = 5285,
+		NonUniform         = 5300,
+		NonUniformEXT      = 5300,
+		RestrictPointer    = 5355,
+		RestrictPointerEXT = 5355,
+		AliasedPointer,
+		AliasedPointerEXT = 5356,
+		BindlessSamplerNV = 5398,
+		BindlessImageNV,
+		BoundSamplerNV,
+		SIMTCallINTEL             = 5599,
+		ReferencedIndirectlyINTEL = 5602,
+		ClobberINTEL              = 5607,
+		SideEffectsINTEL,
+		VectorComputeVariableINTEL = 5624,
+		FuncParamIOKindINTEL,
+		VectorComputeFunctionINTEL,
+		StackCallINTEL,
+		GlobalVariableOffsetINTEL,
+		CounterBuffer           = 5634,
+		HlslCounterBufferGOOGLE = 5634,
+		UserSemantic,
+		HlslSemanticGOOGLE = 5635,
+		UserTypeGOOGLE,
+		FunctionRoundingModeINTEL = 5822,
+		FunctionDenormModeINTEL,
+		RegisterINTEL = 5825,
+		MemoryINTEL,
+		NumbanksINTEL,
+		BankwidthINTEL,
+		MaxPrivateCopiesINTEL,
+		SinglepumpINTEL,
+		DoublepumpINTEL,
+		MaxReplicatesINTEL,
+		SimpleDualPortINTEL,
+		MergeINTEL,
+		BankBitsINTEL,
+		ForcePw2DepthINTEL,
+		BurstCoalesceINTEL = 5899,
+		CacheSizeINTEL,
+		DontStaticallyCoalesceINTEL,
+		PrefetchINTEL,
+		StallEnableINTEL         = 5905,
+		FuseLoopsInFunctionINTEL = 5907,
+		AliasScopeINTEL          = 5914,
+		NoAliasINTEL,
+		BufferLocationINTEL                = 5921,
+		IOPipeStorageINTEL                 = 5944,
+		FunctionFloatingPointModeINTEL     = 6080,
+		SingleElementVectorINTEL           = 6085,
+		VectorComputeCallableFunctionINTEL = 6087,
+		MediaBlockIOINTEL                  = 6140
 	};
 
 	enum class EFunctionControl : std::uint32_t

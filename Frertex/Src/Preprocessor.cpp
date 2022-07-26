@@ -9,56 +9,54 @@
 
 namespace Frertex
 {
-	Preprocessor::Preprocessor(IncludeHandler includeHandler)
-	    : m_IncludeHandler(includeHandler) {}
+	Preprocessor::Preprocessor(Sources* sources, IncludeHandler includeHandler)
+	    : m_Sources(sources), m_IncludeHandler(includeHandler) {}
 
-	std::vector<Token> Preprocessor::process(Utils::CopyMovable<std::vector<Token>>&& tokens, std::string_view filename)
+	std::vector<Token> Preprocessor::process(Utils::CopyMovable<std::vector<Token>>&& tokens)
 	{
 		PROFILE_FUNC;
 
 		// TODO(MarcasRealAccount): Implement macro replacement in other tokens ;)
 
-		m_IncludedFilenames.emplace_back(filename);
-
 		std::vector<Token> output = tokens.get();
+
+		// Remove comments from the preprocessed tokens
+		std::erase_if(
+		    output,
+		    [](Token& token) -> bool
+		    {
+			    return token.m_Class == ETokenClass::Comment || token.m_Class == ETokenClass::MultilineComment;
+		    });
 
 		for (auto itr = output.begin(); itr != output.end();)
 		{
-			if (itr->m_Class == ETokenClass::Comment ||
-			    itr->m_Class == ETokenClass::MultilineComment)
-			{
-				// Remove comments from the preprocessed tokens
-				itr = output.erase(itr);
-			}
-			else if (itr->m_Class == ETokenClass::Preprocessor)
+			if (itr->m_Class == ETokenClass::Preprocessor)
 			{
 				bool eraseDirective = true;
 				do
 				{
-					auto preprocessorSpan = itr->m_Span;
-
-					std::vector<Token> preprocessorTokens = Tokenize(itr->m_Str.substr(1), preprocessorSpan.m_Start);
+					std::vector<Token> preprocessorTokens = Tokenize(m_Sources->getSource(itr->m_SourceID), itr->m_Index + 1, itr->m_Length - 1);
 
 					if (preprocessorTokens.empty())
 						continue;
 
-					auto& directive = preprocessorTokens[0];
+					auto& directive    = preprocessorTokens[0];
+					auto  directiveStr = directive.getView(*m_Sources);
 					if (directive.m_Class != ETokenClass::Identifier)
 					{
-						addError(directive.m_Span, directive.m_Span.m_Start, "Expected identifier");
+						addError(directive, directive.m_Index, "Expected identifier");
 						continue;
 					}
 
 					bool directiveHandled = false;
 
-					if (directive.m_Str == "include")
+					if (directiveStr == "include")
 					{
 						directiveHandled = true;
 						if (preprocessorTokens.size() < 2)
 						{
-							SourcePoint point = directive.m_Span.m_End;
-							++point.m_Column;
-							addError(SourceSpan { point, point }, point, "Expected string or identifier");
+							std::size_t point = directive.m_Index + directive.m_Length + 1;
+							addError(directive.m_FileID, directive.m_SourceID, point, 1, point, "Expected string or identifier");
 							continue;
 						}
 
@@ -69,69 +67,73 @@ namespace Frertex
 						{
 						case ETokenClass::String:
 							if (preprocessorTokens.size() > 2)
-								addWarning(SourceSpan { preprocessorTokens[2].m_Span.m_Start, preprocessorTokens.rbegin()->m_Span.m_End }, preprocessorTokens[2].m_Span.m_Start, "Unused");
-							include = input.m_Str;
+							{
+								std::size_t start  = preprocessorTokens[2].m_Index;
+								std::size_t length = preprocessorTokens.back().m_Length;
+								addWarning(preprocessorTokens[2].m_FileID, preprocessorTokens[2].m_SourceID, start, length, start, "Unused");
+							}
+							include = input.getView(*m_Sources);
 							break;
 						case ETokenClass::Identifier:
 						{
-							auto macro = getMacro(input.m_Str);
+							auto macro = getMacro(input.getView(*m_Sources));
 							if (!macro)
 							{
-								addError(input.m_Span, input.m_Span.m_Start, "Macro has not been defined");
+								addError(input, input.m_Index, "Macro has not been defined");
 								continue;
 							}
 							if (macro->empty())
 							{
-								addWarning(input.m_Span, input.m_Span.m_Start, "Macro is empty, skipping include");
+								addWarning(input, input.m_Index, "Macro is empty, skipping include");
 								continue;
 							}
 							if ((*macro)[0].m_Class != ETokenClass::String)
 							{
-								addError(input.m_Span, input.m_Span.m_Start, "Macro requires first token to be a string (Future: Evaluate all tokens first)");
+								addError(input, input.m_Index, "Macro requires first token to be a string (Future: Evaluate all tokens first)");
 								continue;
 							}
-							include = (*macro)[0].m_Str;
+							include = (*macro)[0].getView(*m_Sources);
 							break;
 						}
 						default:
-							addError(input.m_Span, input.m_Span.m_Start, "Expected string or identifier");
+							addError(input, input.m_Index, "Expected string or identifier");
 							continue;
 						}
 
 						if (!hasIncludedFile(include))
 						{
-							auto result = m_IncludeHandler(include);
+							auto result = m_IncludeHandler(include, m_Sources->getSourceName(input.m_SourceID));
 							if (result.m_Status == EIncludeStatus::Failure)
 							{
-								addError(input.m_Span, input.m_Span.m_Start, fmt::format("File \"{}\" not found", Utils::EscapeString(include)));
+								addError(input, input.m_Index, fmt::format("File \"{}\" not found", Utils::EscapeString(include)));
 								continue;
 							}
 
-							std::vector<Token> includedTokens = Tokenize(result.m_Source, { 0, 0, 0, m_IncludedFilenames.size(), m_IncludedFilenames.size() });
+							std::uint32_t      newFileID      = m_Sources->addSource(include, std::move(result.m_Source));
+							std::vector<Token> includedTokens = Tokenize(m_Sources->getSource(newFileID));
 
 							itr                     = output.erase(itr);
 							eraseDirective          = false;
 							std::size_t startOffset = itr - output.begin();
 							output.insert(itr, includedTokens.begin(), includedTokens.end());
 							itr = output.begin() + startOffset;
-							m_IncludedFilenames.emplace_back(std::move(include));
+							m_IncludedFilenames.emplace_back(include);
 						}
 					}
-					else if (directive.m_Str == "define")
+					else if (directiveStr == "define")
 					{
 						directiveHandled = true;
 						if (preprocessorTokens.size() < 2)
 						{
-							SourcePoint point = directive.m_Span.m_End;
-							++point.m_Column;
-							addError(SourceSpan { point, point }, point, "Expected identifier");
+							std::size_t point = directive.m_Index + directive.m_Length + 1;
+							addError(directive.m_FileID, directive.m_SourceID, point, 1, point, "Expected identifier");
 							continue;
 						}
 
 						auto& name = preprocessorTokens[1];
 						if (name.m_Class != ETokenClass::Identifier)
 						{
-							addError(name.m_Span, name.m_Span.m_Start, "Expected identifier");
+							addError(name, name.m_Index, "Expected identifier");
 							continue;
 						}
 
@@ -140,90 +142,94 @@ namespace Frertex
 							bool macroFunction = false;
 							if (preprocessorTokens.size() >= 4) // Safe to say it might be a macro function
 							{
-								if (preprocessorTokens[2].m_Class == ETokenClass::Symbol && preprocessorTokens[2].m_Str == "(")
+								if (preprocessorTokens[2].m_Class == ETokenClass::Symbol && preprocessorTokens[2].getView(*m_Sources) == "(")
 								{
 									std::size_t functionEnd = 3;
 									while (functionEnd < preprocessorTokens.size())
 									{
 										auto& token = preprocessorTokens[functionEnd];
-										if (token.m_Class == ETokenClass::Symbol && token.m_Str == ")")
+										if (token.m_Class == ETokenClass::Symbol && token.getView(*m_Sources) == ")")
 											break;
 										++functionEnd;
 									}
 									if (functionEnd == preprocessorTokens.size())
 									{
-										addError(preprocessorTokens[3].m_Span, preprocessorTokens[3].m_Span.m_Start, "Expected ')'");
+										addError(preprocessorTokens[3], preprocessorTokens[3].m_Index, "Expected ')'");
 										continue;
 									}
 									macroFunction = true;
 
-									addError(SourceSpan { preprocessorTokens[1].m_Span.m_Start, preprocessorTokens[functionEnd].m_Span.m_End }, preprocessorTokens[2].m_Span.m_Start, "Macro functions not yet implemented, sorry :>");
+									std::size_t start = preprocessorTokens[1].m_Index;
+									std::size_t end   = preprocessorTokens[functionEnd].m_Index;
+									addError(preprocessorTokens[1].m_FileID, preprocessorTokens[1].m_SourceID, start, end - start, preprocessorTokens[2].m_Index, "Macro functions not yet implemented, sorry :>");
 
-									if (hasMacro(name.m_Str))
-										addWarning(name.m_Span, name.m_Span.m_Start, "Macro already defined, redefining");
+									if (hasMacro(name.getView(*m_Sources)))
+										addWarning(name, name.m_Index, "Macro already defined, redefining");
 
 									/*std::vector<Token> valueTokens(preprocessorTokens.size() - functionEnd);
-								for (std::size_t i = 0; i < valueTokens.size(); ++i)
-									valueTokens[i] = std::move(preprocessorTokens[i + functionEnd]);
-								addMacro(name.m_Str, std::move(valueTokens));*/
+									for (std::size_t i = 0; i < valueTokens.size(); ++i)
+										valueTokens[i] = std::move(preprocessorTokens[i + functionEnd]);
+									addMacro(name.getView(*m_Sources), std::move(valueTokens));*/
 								}
 							}
 
 							if (!macroFunction)
 							{
-								if (hasMacro(name.m_Str))
-									addWarning(name.m_Span, name.m_Span.m_Start, "Macro already defined, redefining");
+								if (hasMacro(name.getView(*m_Sources)))
+									addWarning(name, name.m_Index, "Macro already defined, redefining");
 
 								std::vector<Token> valueTokens(preprocessorTokens.size() - 2);
 								for (std::size_t i = 0; i < valueTokens.size(); ++i)
 									valueTokens[i] = std::move(preprocessorTokens[i + 2]);
-								addMacro(name.m_Str, std::move(valueTokens));
+								addMacro(name.getView(*m_Sources), std::move(valueTokens));
 							}
 						}
 						else // Plain macro
 						{
-							if (hasMacro(name.m_Str))
-								addWarning(name.m_Span, name.m_Span.m_Start, "Macro already defined, redefining");
-							addMacro(name.m_Str);
+							if (hasMacro(name.getView(*m_Sources)))
+								addWarning(name, name.m_Index, "Macro already defined, redefining");
+							addMacro(name.getView(*m_Sources));
 						}
 					}
-					else if (directive.m_Str == "undefine")
+					else if (directiveStr == "undefine")
 					{
 						directiveHandled = true;
 						if (preprocessorTokens.size() < 2)
 						{
-							SourcePoint point = directive.m_Span.m_End;
-							++point.m_Column;
-							addError(SourceSpan { point, point }, point, "Expected identifier");
+							std::size_t point = directive.m_Index + directive.m_Length + 1;
+							addError(directive.m_FileID, directive.m_SourceID, point, 1, point, "Expected identifier");
 							continue;
 						}
 						else if (preprocessorTokens.size() > 2)
 						{
-							addWarning(SourceSpan { preprocessorTokens[2].m_Span.m_Start, preprocessorTokens.rbegin()->m_Span.m_End }, preprocessorTokens[2].m_Span.m_Start, "Unused");
+							std::size_t start  = preprocessorTokens[2].m_Index;
+							std::size_t length = preprocessorTokens.back().m_Length;
+							addWarning(preprocessorTokens[2].m_FileID, preprocessorTokens[2].m_SourceID, start, length, start, "Unused");
 						}
 
 						auto& name = preprocessorTokens[1];
 						if (name.m_Class != ETokenClass::Identifier)
 						{
-							addError(name.m_Span, name.m_Span.m_Start, "Expected identifier");
+							addError(name, name.m_Index, "Expected identifier");
 							continue;
 						}
 
-						removeMacro(name.m_Str);
+						removeMacro(name.getView(*m_Sources));
 					}
-					else if (directive.m_Str == "error")
+					else if (directiveStr == "error")
 					{
 						directiveHandled = true;
 						if (preprocessorTokens.size() < 2)
 						{
-							SourcePoint point = directive.m_Span.m_End;
-							++point.m_Column;
-							addError(SourceSpan { point, point }, point, "Expected string or identifier");
+							std::size_t point = directive.m_Index + directive.m_Length + 1;
+							addError(directive.m_FileID, directive.m_SourceID, point, 1, point, "Expected string or identifier");
 							continue;
 						}
 						else if (preprocessorTokens.size() > 2)
 						{
-							addWarning(SourceSpan { preprocessorTokens[2].m_Span.m_Start, preprocessorTokens.rbegin()->m_Span.m_End }, preprocessorTokens[2].m_Span.m_Start, "Unused");
+							std::size_t start  = preprocessorTokens[2].m_Index;
+							std::size_t length = preprocessorTokens.back().m_Length;
+							addWarning(preprocessorTokens[2].m_FileID, preprocessorTokens[2].m_SourceID, start, length, start, "Unused");
 						}
 
 						auto&       input = preprocessorTokens[1];
@@ -232,49 +238,50 @@ namespace Frertex
 						switch (input.m_Class)
 						{
 						case ETokenClass::String:
-							error = input.m_Str;
+							error = input.getView(*m_Sources);
 							break;
 						case ETokenClass::Identifier:
 						{
-							auto macro = getMacro(input.m_Str);
+							auto macro = getMacro(input.getView(*m_Sources));
 							if (!macro)
 							{
-								addError(input.m_Span, input.m_Span.m_Start, "Macro has not been defined");
+								addError(input, input.m_Index, "Macro has not been defined");
 								continue;
 							}
 							if (macro->empty())
 							{
-								addWarning(input.m_Span, input.m_Span.m_Start, "Macro is empty, skipping include");
+								addWarning(input, input.m_Index, "Macro is empty, skipping include");
 								continue;
 							}
 							if ((*macro)[0].m_Class != ETokenClass::String)
 							{
-								addError(input.m_Span, input.m_Span.m_Start, "Macro requires first token to be a string (Future: Evaluate all tokens first)");
+								addError(input, input.m_Index, "Macro requires first token to be a string (Future: Evaluate all tokens first)");
 								continue;
 							}
-							error = (*macro)[0].m_Str;
+							error = (*macro)[0].getView(*m_Sources);
 							break;
 						}
 						default:
-							addError(input.m_Span, input.m_Span.m_Start, "Expected string or identifier");
+							addError(input, input.m_Index, "Expected string or identifier");
 							continue;
 						}
 
-						addError(preprocessorSpan, directive.m_Span.m_Start, std::move(error));
+						addError(*itr, directive.m_Index, std::move(error));
 					}
-					else if (directive.m_Str == "warn")
+					else if (directiveStr == "warn")
 					{
 						directiveHandled = true;
 						if (preprocessorTokens.size() < 2)
 						{
-							SourcePoint point = directive.m_Span.m_End;
-							++point.m_Column;
-							addError(SourceSpan { point, point }, point, "Expected string or identifier");
+							std::size_t point = directive.m_Index + directive.m_Length + 1;
+							addError(directive.m_FileID, directive.m_SourceID, point, 1, point, "Expected string or identifier");
 							continue;
 						}
 						else if (preprocessorTokens.size() > 2)
 						{
-							addWarning(SourceSpan { preprocessorTokens[2].m_Span.m_Start, preprocessorTokens.rbegin()->m_Span.m_End }, preprocessorTokens[2].m_Span.m_Start, "Unused");
+							std::size_t start  = preprocessorTokens[2].m_Index;
+							std::size_t length = preprocessorTokens.back().m_Length;
+							addWarning(preprocessorTokens[2].m_FileID, preprocessorTokens[2].m_SourceID, start, length, start, "Unused");
 						}
 
 						auto&       input = preprocessorTokens[1];
@@ -283,44 +290,43 @@ namespace Frertex
 						switch (input.m_Class)
 						{
 						case ETokenClass::String:
-							warn = input.m_Str;
+							warn = input.getView(*m_Sources);
 							break;
 						case ETokenClass::Identifier:
 						{
-							auto macro = getMacro(input.m_Str);
+							auto macro = getMacro(input.getView(*m_Sources));
 							if (!macro)
 							{
-								addError(input.m_Span, input.m_Span.m_Start, "Macro has not been defined");
+								addError(input, input.m_Index, "Macro has not been defined");
 								continue;
 							}
 							if (macro->empty())
 							{
-								addWarning(input.m_Span, input.m_Span.m_Start, "Macro is empty, skipping include");
+								addWarning(input, input.m_Index, "Macro is empty, skipping include");
 								continue;
 							}
 							if ((*macro)[0].m_Class != ETokenClass::String)
 							{
-								addError(input.m_Span, input.m_Span.m_Start, "Macro requires first token to be a string (Future: Evaluate all tokens first)");
+								addError(input, input.m_Index, "Macro requires first token to be a string (Future: Evaluate all tokens first)");
 								continue;
 							}
-							warn = (*macro)[0].m_Str;
+							warn = (*macro)[0].getView(*m_Sources);
 							break;
 						}
 						default:
-							addError(input.m_Span, input.m_Span.m_Start, "Expected string or identifier");
+							addError(input, input.m_Index, "Expected string or identifier");
 							continue;
 						}
 
-						addWarning(preprocessorSpan, directive.m_Span.m_Start, std::move(warn));
+						addWarning(*itr, directive.m_Index, std::move(warn));
 					}
-					else if (directive.m_Str == "line")
+					/*else if (directiveStr == "line")
 					{
 						directiveHandled = true;
 						if (preprocessorTokens.size() < 2)
 						{
-							SourcePoint point = directive.m_Span.m_End;
-							++point.m_Column;
-							addError(SourceSpan { point, point }, point, "Expected integer or identifier");
+							std::size_t point = directive.m_Index + directive.m_Length + 1;
+							addError(directive.m_FileID, directive.m_SourceID, point, 1, point, "Expected integer or identifier");
 							continue;
 						}
 
@@ -329,28 +335,28 @@ namespace Frertex
 						switch (lineNumber.m_Class)
 						{
 						case ETokenClass::Integer:
-							ln = std::strtoull(lineNumber.m_Str.c_str(), nullptr, 10);
+							ln = std::strtoull(lineNumber.getView(*m_Sources).data(), nullptr, 10);
 							break;
 						case ETokenClass::BinaryInteger:
-							ln = std::strtoull(lineNumber.m_Str.c_str() + 2, nullptr, 2);
+							ln = std::strtoull(lineNumber.getView(*m_Sources).data() + 2, nullptr, 2);
 							break;
 						case ETokenClass::OctalInteger:
-							ln = std::strtoull(lineNumber.m_Str.c_str() + 2, nullptr, 8);
+							ln = std::strtoull(lineNumber.getView(*m_Sources).data() + 2, nullptr, 8);
 							break;
 						case ETokenClass::HexInteger:
-							ln = std::strtoull(lineNumber.m_Str.c_str() + 2, nullptr, 16);
+							ln = std::strtoull(lineNumber.getView(*m_Sources).data() + 2, nullptr, 16);
 							break;
 						case ETokenClass::Identifier:
 						{
-							auto macro = getMacro(lineNumber.m_Str);
+							auto macro = getMacro(lineNumber.getView(*m_Sources));
 							if (!macro)
 							{
-								addError(lineNumber.m_Span, lineNumber.m_Span.m_Start, "Macro has not been defined");
+								addError(lineNumber, lineNumber.m_Index, "Macro has not been defined");
 								continue;
 							}
 							if (macro->empty())
 							{
-								addWarning(lineNumber.m_Span, lineNumber.m_Span.m_Start, "Macro is empty, skipping include");
+								addWarning(lineNumber, lineNumber.m_Index, "Macro is empty, skipping include");
 								continue;
 							}
 
@@ -358,29 +364,29 @@ namespace Frertex
 							switch (lnn.m_Class)
 							{
 							case ETokenClass::Integer:
-								ln = std::strtoull(lineNumber.m_Str.c_str(), nullptr, 10);
+								ln = std::strtoull(lineNumber.getView(*m_Sources).data(), nullptr, 10);
 								break;
 							case ETokenClass::BinaryInteger:
-								ln = std::strtoull(lineNumber.m_Str.c_str() + 2, nullptr, 2);
+								ln = std::strtoull(lineNumber.getView(*m_Sources).data() + 2, nullptr, 2);
 								break;
 							case ETokenClass::OctalInteger:
-								ln = std::strtoull(lineNumber.m_Str.c_str() + 2, nullptr, 8);
+								ln = std::strtoull(lineNumber.getView(*m_Sources).data() + 2, nullptr, 8);
 								break;
 							case ETokenClass::HexInteger:
-								ln = std::strtoull(lineNumber.m_Str.c_str() + 2, nullptr, 16);
+								ln = std::strtoull(lineNumber.getView(*m_Sources).data() + 2, nullptr, 16);
 								break;
 							default:
-								addError(lineNumber.m_Span, lineNumber.m_Span.m_Start, "Macro requires first token to be an integer (Future: Evaluate all tokens first)");
+								addError(lineNumber, lineNumber.m_Index, "Macro requires first token to be an integer (Future: Evaluate all tokens first)");
 								continue;
 							}
 							break;
 						}
 						default:
-							addError(lineNumber.m_Span, lineNumber.m_Span.m_Start, "Expected integer or identifier");
+							addError(lineNumber, lineNumber.m_Index, "Expected integer or identifier");
 							continue;
 						}
 
-						std::size_t file = directive.m_Span.m_Start.m_File;
+						std::uint32_t file = directive.m_FileID;
 
 						if (preprocessorTokens.size() > 2)
 						{
@@ -391,49 +397,46 @@ namespace Frertex
 							{
 							case ETokenClass::String:
 								if (preprocessorTokens.size() > 3)
-									addWarning(SourceSpan { preprocessorTokens[3].m_Span.m_Start, preprocessorTokens.rbegin()->m_Span.m_End }, preprocessorTokens[3].m_Span.m_Start, "Unused");
-								filenameStr = filenameToken.m_Str;
+								{
+									std::size_t start  = preprocessorTokens[3].m_Index;
+									std::size_t length = preprocessorTokens.back().m_Length;
+									addWarning(preprocessorTokens[3].m_FileID, preprocessorTokens[3].m_SourceID, start, length, start, "Unused");
+								}
+								filenameStr = filenameToken.getView(*m_Sources);
 								break;
 							case ETokenClass::Identifier:
 							{
-								auto macro = getMacro(filenameToken.m_Str);
+								auto macro = getMacro(filenameToken.getView(*m_Sources));
 								if (!macro)
 								{
-									addError(filenameToken.m_Span, filenameToken.m_Span.m_Start, "Macro has not been defined");
+									addError(filenameToken, filenameToken.m_Index, "Macro has not been defined");
 									continue;
 								}
 								if (macro->empty())
 								{
-									addWarning(filenameToken.m_Span, filenameToken.m_Span.m_Start, "Macro is empty, skipping include");
+									addWarning(filenameToken, filenameToken.m_Index, "Macro is empty, skipping include");
 									continue;
 								}
 								if ((*macro)[0].m_Class != ETokenClass::String)
 								{
-									addError(filenameToken.m_Span, filenameToken.m_Span.m_Start, "Macro requires first token to be a string (Future: Evaluate all tokens first)");
+									addError(filenameToken, filenameToken.m_Index, "Macro requires first token to be a string (Future: Evaluate all tokens first)");
 									continue;
 								}
-								filenameStr = (*macro)[0].m_Str;
+								filenameStr = (*macro)[0].getView(*m_Sources);
 								break;
 							}
 							default:
-								addError(filenameToken.m_Span, filenameToken.m_Span.m_Start, "Expected string or identifier");
+								addError(filenameToken, filenameToken.m_Index, "Expected string or identifier");
 								continue;
 							}
 
-							auto itr2 = m_IncludedFilenames.begin();
-							while (itr2 != m_IncludedFilenames.end() && *itr2 != filenameStr)
-								++itr2;
-							if (itr2 == m_IncludedFilenames.end())
-							{
-								file = m_IncludedFilenames.size();
-								m_IncludedFilenames.emplace_back(filenameStr);
-								itr2 = m_IncludedFilenames.end() - 1;
-							}
-							file = itr2 - m_IncludedFilenames.begin();
+							file = m_Sources->getSourceID(filenameStr);
+							if (!file)
+								file = m_Sources->addSource(filenameStr, "");
 						}
 
-						std::size_t baseFile = directive.m_Span.m_Start.m_File;
-						std::size_t baseline = directive.m_Span.m_Start.m_Line + 2;
+						std::uint32_t baseFile = directive.m_Span.m_Start.m_File;
+						std::size_t   baseline = directive.m_Span.m_Start.m_Line + 2;
 
 						for (auto itr2 = itr + 1; itr2 != output.end(); ++itr2)
 						{
@@ -447,40 +450,40 @@ namespace Frertex
 								itr2->m_Span.m_End.m_File = file;
 							}
 						}
-					}
-					else if (directive.m_Str == "elif")
+					}*/
+					else if (directiveStr == "elif")
 					{
 						directiveHandled = true;
-						addError(directive.m_Span, directive.m_Span.m_Start, "Unexpected directive");
+						addError(directive, directive.m_Index, "Unexpected directive");
 						continue;
 					}
-					else if (directive.m_Str == "elifdef")
+					else if (directiveStr == "elifdef")
 					{
 						directiveHandled = true;
-						addError(directive.m_Span, directive.m_Span.m_Start, "Unexpected directive");
+						addError(directive, directive.m_Index, "Unexpected directive");
 						continue;
 					}
-					else if (directive.m_Str == "elifndef")
+					else if (directiveStr == "elifndef")
 					{
 						directiveHandled = true;
-						addError(directive.m_Span, directive.m_Span.m_Start, "Unexpected directive");
+						addError(directive, directive.m_Index, "Unexpected directive");
 						continue;
 					}
-					else if (directive.m_Str == "else")
+					else if (directiveStr == "else")
 					{
 						directiveHandled = true;
-						addError(directive.m_Span, directive.m_Span.m_Start, "Unexpected directive");
+						addError(directive, directive.m_Index, "Unexpected directive");
 						continue;
 					}
-					else if (directive.m_Str == "endif")
+					else if (directiveStr == "endif")
 					{
 						directiveHandled = true;
-						addError(directive.m_Span, directive.m_Span.m_Start, "Unexpected directive");
+						addError(directive, directive.m_Index, "Unexpected directive");
 						continue;
 					}
-					else if (directive.m_Str == "if" ||
-					         directive.m_Str == "ifdef" ||
-					         directive.m_Str == "ifndef")
+					else if (directiveStr == "if" ||
+					         directiveStr == "ifdef" ||
+					         directiveStr == "ifndef")
 					{
 						eraseDirective          = false;
 						directiveHandled        = true;
@@ -495,9 +498,7 @@ namespace Frertex
 							{
 								if (end->m_Class == ETokenClass::Preprocessor)
 								{
-									auto preprocessorSpan2 = end->m_Span;
-
-									std::vector<Token> preprocessorTokens2 = Tokenize(end->m_Str.substr(1), preprocessorSpan2.m_Start);
+									std::vector<Token> preprocessorTokens2 = Tokenize(m_Sources->getSource(end->m_SourceID), end->m_Index + 1, end->m_Length - 1);
 									if (preprocessorTokens2.empty() ||
 									    preprocessorTokens2[0].m_Class != ETokenClass::Identifier)
 									{
@@ -505,7 +506,7 @@ namespace Frertex
 										continue;
 									}
 
-									auto& directive2 = preprocessorTokens2[0].m_Str;
+									auto directive2 = preprocessorTokens2[0].getView(*m_Sources);
 									if (state == 0)
 									{
 										if (directive2 == "elif" ||
@@ -527,10 +528,9 @@ namespace Frertex
 							}
 							if (end == output.end())
 							{
-								SourcePoint point = output.rbegin()->m_Span.m_End;
-								++point.m_Line;
-								point.m_Column = 0;
-								addWarning(SourceSpan { point, point }, point, state == 0 ? "Expected \"#elif\", \"#elifdef\", \"#elifndef\", \"#else\" or \"#endif\" directive" : (state == 1 ? "Expected \"#else\" or \"#endif\" directive" : "Expected \"#endif\" directive"));
+								auto&       back  = output.back();
+								std::size_t point = back.m_Index + back.m_Length;
+								addWarning(back.m_FileID, back.m_SourceID, point, 1, point, state == 0 ? "Expected \"#elif\", \"#elifdef\", \"#elifndef\", \"#else\" or \"#endif\" directive" : (state == 1 ? "Expected \"#else\" or \"#endif\" directive" : "Expected \"#endif\" directive"));
 								continue;
 							}
 
@@ -538,131 +538,133 @@ namespace Frertex
 
 							do
 							{
-								auto               preprocessorSpanStart   = start->m_Span;
-								std::vector<Token> preprocessorTokensStart = Tokenize(start->m_Str.substr(1), preprocessorSpanStart.m_Start);
+								std::vector<Token> preprocessorTokensStart = Tokenize(m_Sources->getSource(start->m_SourceID), start->m_Index + 1, start->m_Length - 1);
 								if (preprocessorTokensStart.empty() ||
 								    preprocessorTokensStart[0].m_Class != ETokenClass::Identifier)
 								{
-									addError(preprocessorSpanStart, preprocessorSpanStart.m_Start, "Expected Identifier");
+									addError(*start, start->m_Index, "Expected Identifier");
 									continue;
 								}
 
-								auto& directiveStart = preprocessorTokensStart[0];
+								auto& directiveStart    = preprocessorTokensStart[0];
+								auto  directiveStartStr = directiveStart.getView(*m_Sources);
 
-								if (directiveStart.m_Str == "if" ||
-								    directiveStart.m_Str == "elif")
+								if (directiveStartStr == "if" ||
+								    directiveStartStr == "elif")
 								{
 									if (preprocessorTokensStart.size() < 2)
 									{
-										SourcePoint point = directiveStart.m_Span.m_End;
-										++point.m_Column;
-										addError(SourceSpan { point, point }, point, "Expected bool statement");
+										std::size_t point = directiveStart.m_Index + directiveStart.m_Length + 1;
+										addError(directiveStart.m_FileID, directiveStart.m_SourceID, point, 1, point, "Expected bool statement");
 										continue;
 									}
 
-									auto& statement = preprocessorTokensStart[1];
+									auto& statement    = preprocessorTokensStart[1];
+									auto  statementStr = statement.getView(*m_Sources);
 									if (statement.m_Class != ETokenClass::Identifier &&
 									    statement.m_Class != ETokenClass::Integer &&
 									    statement.m_Class != ETokenClass::BinaryInteger &&
 									    statement.m_Class != ETokenClass::OctalInteger &&
 									    statement.m_Class != ETokenClass::HexInteger)
 									{
-										addError(statement.m_Span, statement.m_Span.m_Start, "Expected bool statement");
+										addError(statement, statement.m_Index, "Expected bool statement");
 										continue;
 									}
 
 									switch (statement.m_Class)
 									{
 									case ETokenClass::Identifier:
-										if (statement.m_Str == "false")
+										if (statementStr == "false")
 											enable = false;
-										else if (statement.m_Str == "true")
+										else if (statementStr == "true")
 											enable = true;
 										else
-											addError(statement.m_Span, statement.m_Span.m_Start, "Expected bool statement");
+											addError(statement, statement.m_Index, "Expected bool statement");
 										break;
 									case ETokenClass::Integer:
 									{
 										char*        endStr;
-										std::int64_t integer = std::strtoll(statement.m_Str.c_str(), &endStr, 10);
+										std::int64_t integer = std::strtoll(statementStr.data(), &endStr, 10);
 										enable               = integer != 0;
 										break;
 									}
 									case ETokenClass::BinaryInteger:
 									{
 										char*        endStr;
-										std::int64_t integer = std::strtoll(statement.m_Str.c_str() + 2, &endStr, 2);
+										std::int64_t integer = std::strtoll(statementStr.data() + 2, &endStr, 2);
 										enable               = integer != 0;
 										break;
 									}
 									case ETokenClass::OctalInteger:
 									{
 										char*        endStr;
-										std::int64_t integer = std::strtoll(statement.m_Str.c_str() + 2, &endStr, 8);
+										std::int64_t integer = std::strtoll(statementStr.data() + 2, &endStr, 8);
 										enable               = integer != 0;
 										break;
 									}
 									case ETokenClass::HexInteger:
 									{
 										char*        endStr;
-										std::int64_t integer = std::strtoll(statement.m_Str.c_str() + 2, &endStr, 16);
+										std::int64_t integer = std::strtoll(statementStr.data() + 2, &endStr, 16);
 										enable               = integer != 0;
 										break;
 									}
 									default:
-										addError(statement.m_Span, statement.m_Span.m_Start, "Expected bool or integer");
+										addError(statement, statement.m_Index, "Expected bool or integer");
 										continue;
 									}
 								}
-								else if (directiveStart.m_Str == "ifdef" ||
-								         directiveStart.m_Str == "elifdef")
+								else if (directiveStartStr == "ifdef" ||
+								         directiveStartStr == "elifdef")
 								{
 									if (preprocessorTokensStart.size() < 2)
 									{
-										SourcePoint point = directiveStart.m_Span.m_End;
-										++point.m_Column;
-										addError(SourceSpan { point, point }, point, "Expected identifier");
+										std::size_t point = directiveStart.m_Index + directiveStart.m_Length + 1;
+										addError(directiveStart.m_FileID, directiveStart.m_SourceID, point, 1, point, "Expected identifier");
 										continue;
 									}
 									else if (preprocessorTokensStart.size() > 2)
 									{
-										addWarning(SourceSpan { preprocessorTokensStart[2].m_Span.m_Start, preprocessorTokensStart.rbegin()->m_Span.m_End }, preprocessorTokensStart[2].m_Span.m_Start, "Unused");
+										std::size_t start  = preprocessorTokens[2].m_Index;
+										std::size_t length = preprocessorTokens.back().m_Length;
+										addWarning(preprocessorTokens[2].m_FileID, preprocessorTokens[2].m_SourceID, start, length, start, "Unused");
 									}
 
 									auto& name = preprocessorTokensStart[1];
 									if (name.m_Class != ETokenClass::Identifier)
 									{
-										addError(name.m_Span, name.m_Span.m_Start, "Expected identifier");
+										addError(name, name.m_Index, "Expected identifier");
 										continue;
 									}
 
-									enable = hasMacro(name.m_Str);
+									enable = hasMacro(name.getView(*m_Sources));
 								}
-								else if (directiveStart.m_Str == "ifndef" ||
-								         directiveStart.m_Str == "elifndef")
+								else if (directiveStartStr == "ifndef" ||
+								         directiveStartStr == "elifndef")
 								{
 									if (preprocessorTokensStart.size() < 2)
 									{
-										SourcePoint point = directiveStart.m_Span.m_End;
-										++point.m_Column;
-										addError(SourceSpan { point, point }, point, "Expected identifier");
+										std::size_t point = directiveStart.m_Index + directiveStart.m_Length + 1;
+										addError(directiveStart.m_FileID, directiveStart.m_SourceID, point, 1, point, "Expected identifier");
 										continue;
 									}
 									else if (preprocessorTokensStart.size() > 2)
 									{
-										addWarning(SourceSpan { preprocessorTokensStart[2].m_Span.m_Start, preprocessorTokensStart.rbegin()->m_Span.m_End }, preprocessorTokensStart[2].m_Span.m_Start, "Unused");
+										std::size_t start  = preprocessorTokens[2].m_Index;
+										std::size_t length = preprocessorTokens.back().m_Length;
+										addWarning(preprocessorTokens[2].m_FileID, preprocessorTokens[2].m_SourceID, start, length, start, "Unused");
 									}
 
 									auto& name = preprocessorTokensStart[1];
 									if (name.m_Class != ETokenClass::Identifier)
 									{
-										addError(name.m_Span, name.m_Span.m_Start, "Expected identifier");
+										addError(name, name.m_Index, "Expected identifier");
 										continue;
 									}
 
-									enable = !hasMacro(name.m_Str);
+									enable = !hasMacro(name.getView(*m_Sources));
 								}
-								else if (directiveStart.m_Str == "else")
+								else if (directiveStartStr == "else")
 								{
 									enable = state != 2;
 								}
@@ -670,19 +672,19 @@ namespace Frertex
 
 							do
 							{
-								auto               preprocessorSpanEnd   = end->m_Span;
-								std::vector<Token> preprocessorTokensEnd = Tokenize(end->m_Str.substr(1), preprocessorSpanEnd.m_Start);
+								std::vector<Token> preprocessorTokensEnd = Tokenize(m_Sources->getSource(end->m_SourceID), end->m_Index + 1, end->m_Length - 1);
 								if (preprocessorTokensEnd.empty() ||
 								    preprocessorTokensEnd[0].m_Class != ETokenClass::Identifier)
 								{
-									addError(preprocessorSpanEnd, preprocessorSpanEnd.m_Start, "Expected Identifier");
+									addError(*end, end->m_Index, "Expected Identifier");
 									continue;
 								}
 
-								auto& directiveEnd = preprocessorTokensEnd[0];
-								if (directiveEnd.m_Str == "else")
+								auto& directiveEnd    = preprocessorTokensEnd[0];
+								auto  directiveEndStr = directiveEnd.getView(*m_Sources);
+								if (directiveEndStr == "else")
 									++state;
-								else if (directiveEnd.m_Str == "endif")
+								else if (directiveEndStr == "endif")
 									state = 3;
 							} while (false);
 
@@ -709,7 +711,7 @@ namespace Frertex
 					}
 
 					if (!directiveHandled)
-						addWarning(directive.m_Span, directive.m_Span.m_Start, fmt::format("Unknown preprocessor directive \"{}\"", Utils::EscapeString(directive.m_Str)));
+						addWarning(directive, directive.m_Index, fmt::format("Unknown preprocessor directive \"{}\"", Utils::EscapeString(directiveStr)));
 				} while (false);
 
 				if (eraseDirective)
@@ -735,8 +737,8 @@ namespace Frertex
 	{
 		PROFILE_FUNC;
 
-		std::string str = value.get();
-		m_Macros.insert_or_assign(name.get(), Tokenize(str, { 0, 0, 0, ~0ULL }));
+		auto id = m_Sources->addSource(name.get(), value.get());
+		m_Macros.insert_or_assign(name.get(), Tokenize(m_Sources->getSource(id)));
 	}
 
 	void Preprocessor::addMacro(Utils::CopyMovable<std::string>&& name, Utils::CopyMovable<std::vector<Token>>&& value)
@@ -777,20 +779,6 @@ namespace Frertex
 		return itr != m_Macros.end() ? &itr->second : nullptr;
 	}
 
-	void Preprocessor::addWarning(SourceSpan span, SourcePoint point, Utils::CopyMovable<std::string>&& message)
-	{
-		PROFILE_FUNC;
-
-		m_Messages.emplace_back(EMessageType::Warning, span, point, message.get());
-	}
-
-	void Preprocessor::addError(SourceSpan span, SourcePoint point, Utils::CopyMovable<std::string>&& message)
-	{
-		PROFILE_FUNC;
-
-		m_Messages.emplace_back(EMessageType::Error, span, point, message.get());
-	}
-
 	bool Preprocessor::hasIncludedFile(std::string_view filename)
 	{
 		PROFILE_FUNC;
@@ -799,5 +787,29 @@ namespace Frertex
 		while (itr != m_IncludedFilenames.end() && *itr != filename)
 			++itr;
 		return itr != m_IncludedFilenames.end();
+	}
+
+	void Preprocessor::addWarning(std::uint32_t fileID, std::uint32_t sourceID, std::size_t index, std::size_t length, std::size_t point, Utils::CopyMovable<std::string>&& message)
+	{
+		PROFILE_FUNC;
+
+		auto span             = m_Sources->getSpan(index, length, sourceID);
+		auto pt               = m_Sources->getPoint(point, sourceID);
+		span.m_Start.m_FileID = fileID;
+		span.m_End.m_FileID   = fileID;
+		pt.m_FileID           = fileID;
+		m_Messages.emplace_back(EMessageType::Warning, span, pt, message.get());
+	}
+
+	void Preprocessor::addError(std::uint32_t fileID, std::uint32_t sourceID, std::size_t index, std::size_t length, std::size_t point, Utils::CopyMovable<std::string>&& message)
+	{
+		PROFILE_FUNC;
+
+		auto span             = m_Sources->getSpan(index, length, sourceID);
+		auto pt               = m_Sources->getPoint(point, sourceID);
+		span.m_Start.m_FileID = fileID;
+		span.m_End.m_FileID   = fileID;
+		pt.m_FileID           = fileID;
+		m_Messages.emplace_back(EMessageType::Error, span, pt, message.get());
 	}
 } // namespace Frertex

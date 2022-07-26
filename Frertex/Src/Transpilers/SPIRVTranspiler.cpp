@@ -39,9 +39,8 @@ namespace Frertex::Transpilers::SPIRV
 		}
 	}
 
-	SPIRVTranspiler::SPIRVTranspiler()
-	{
-	}
+	SPIRVTranspiler::SPIRVTranspiler(Sources* sources)
+	    : m_Sources(sources) {}
 
 	SPIRV SPIRVTranspiler::transpile(Utils::CopyMovable<FIL>&& fil)
 	{
@@ -52,29 +51,36 @@ namespace Frertex::Transpilers::SPIRV
 		SPIRV spirv;
 		auto& code = spirv.m_Code;
 
-		// Figure out required capabilities
-		std::set<ECapability> capabilities;
-		capabilities.insert(ECapability::Shader); // For now to get EMemoryModel::GLSL450
+		CodeBuffer entrypointsCode;
+		CodeBuffer executionModesCode;
+		CodeBuffer decorationsCode;
+		CodeBuffer typesCode;
+		CodeBuffer variablesCode;
+		CodeBuffer constantsCode;
+		CodeBuffer functionsCode;
+
+		requiresCapability(ECapability::Shader); // For now to get EMemoryModel::GLSL450
 		{
+			// Figure out required entrypoint capabilities
 			for (auto& entrypoint : input.m_Entrypoints)
 			{
 				switch (entrypoint.m_Type)
 				{
 				case EEntrypointType::VertexShader:
-					capabilities.insert(ECapability::Shader);
+					requiresCapability(ECapability::Shader);
 					break;
 				case EEntrypointType::TessellationControlShader:
 				case EEntrypointType::TessellationEvaluationShader:
-					capabilities.insert(ECapability::Tessellation);
+					requiresCapability(ECapability::Tessellation);
 					break;
 				case EEntrypointType::GeometryShader:
-					capabilities.insert(ECapability::Geometry);
+					requiresCapability(ECapability::Geometry);
 					break;
 				case EEntrypointType::FragmentShader:
-					capabilities.insert(ECapability::Shader);
+					requiresCapability(ECapability::Shader);
 					break;
 				case EEntrypointType::ComputeShader:
-					capabilities.insert(ECapability::Kernel);
+					requiresCapability(ECapability::Kernel);
 					break;
 				case EEntrypointType::RTRayGenShader:
 				case EEntrypointType::RTAnyHitShader:
@@ -82,44 +88,16 @@ namespace Frertex::Transpilers::SPIRV
 				case EEntrypointType::RTMissShader:
 				case EEntrypointType::RTIntersectionShader:
 				case EEntrypointType::RTCallableShader:
-					capabilities.insert(ECapability::RayTracingKHR);
+					requiresCapability(ECapability::RayTracingKHR);
 					break;
 				case EEntrypointType::NVTaskShader:
 				case EEntrypointType::NVMeshShader:
-					capabilities.insert(ECapability::MeshShadingNV);
+					requiresCapability(ECapability::MeshShadingNV);
 					break;
 				default:
 					break;
 				}
 			}
-		}
-		for (auto itr = capabilities.begin(); itr != capabilities.end(); ++itr)
-			code.pushOpCapability(*itr);
-
-		code.pushOpMemoryModel(EAddressingMode::Logical, EMemoryModel::GLSL450);
-
-		struct CodeInfo
-		{
-			std::uint32_t m_ResultID;
-			CodeBuffer    m_Code;
-		};
-
-		std::unordered_map<std::string, CodeInfo> codes;
-
-		if (!input.m_Entrypoints.empty())
-		{
-			if (!codes.contains("void"))
-			{
-				CodeInfo type;
-				type.m_ResultID = spirv.m_IDBound++;
-				type.m_Code.pushOpTypeVoid(type.m_ResultID);
-				codes.insert({ "void", type });
-			}
-
-			CodeInfo func;
-			func.m_ResultID = spirv.m_IDBound++;
-			func.m_Code.pushOpTypeFunction(func.m_ResultID, codes["void"].m_ResultID, {});
-			codes.insert({ "void()", func });
 		}
 
 		struct EntrypointInfo
@@ -136,616 +114,247 @@ namespace Frertex::Transpilers::SPIRV
 		{
 			auto&           info           = entrypointInfos[i];
 			auto&           entrypoint     = input.m_Entrypoints[i];
-			EExecutionModel executionModel = EExecutionModel::Vertex;
-
-			switch (entrypoint.m_Type)
-			{
-			case EEntrypointType::VertexShader:
-				executionModel = EExecutionModel::Vertex;
-				break;
-			case EEntrypointType::TessellationControlShader:
-				executionModel = EExecutionModel::TessellationControl;
-				break;
-			case EEntrypointType::TessellationEvaluationShader:
-				executionModel = EExecutionModel::TessellationEvaluation;
-				break;
-			case EEntrypointType::GeometryShader:
-				executionModel = EExecutionModel::Geometry;
-				break;
-			case EEntrypointType::FragmentShader:
-				executionModel = EExecutionModel::Fragment;
-				break;
-			case EEntrypointType::ComputeShader:
-				executionModel = EExecutionModel::Kernel;
-				break;
-			case EEntrypointType::RTRayGenShader:
-				executionModel = EExecutionModel::RayGenerationKHR;
-				break;
-			case EEntrypointType::RTAnyHitShader:
-				executionModel = EExecutionModel::AnyHitKHR;
-				break;
-			case EEntrypointType::RTClosestHitShader:
-				executionModel = EExecutionModel::ClosestHitKHR;
-				break;
-			case EEntrypointType::RTMissShader:
-				executionModel = EExecutionModel::MissKHR;
-				break;
-			case EEntrypointType::RTIntersectionShader:
-				executionModel = EExecutionModel::IntersectionKHR;
-				break;
-			case EEntrypointType::RTCallableShader:
-				executionModel = EExecutionModel::CallableKHR;
-				break;
-			case EEntrypointType::NVTaskShader:
-				executionModel = EExecutionModel::TaskNV;
-				break;
-			case EEntrypointType::NVMeshShader:
-				executionModel = EExecutionModel::MeshNV;
-				break;
-			default:
-				break;
-			}
+			EExecutionModel executionModel = EntrypointTypeToExecutionModel(entrypoint.m_Type);
 
 			auto& label = input.m_Labels[entrypoint.m_LabelID];
 			auto  name  = std::string_view(reinterpret_cast<const char*>(input.m_Strings.data() + label.m_NameOffset), label.m_NameLength);
 
-			info.m_FunctionID  = spirv.m_IDBound++;
-			info.m_BaseLabelID = spirv.m_IDBound++;
+			std::vector<std::uint32_t> interface;
+			interface.reserve(entrypoint.m_Inputs.size() + entrypoint.m_Outputs.size());
 			info.m_InputIDs.resize(entrypoint.m_Inputs.size());
 			for (std::size_t j = 0; j < entrypoint.m_Inputs.size(); ++j)
 			{
-				auto& input = entrypoint.m_Inputs[j];
+				auto& param        = entrypoint.m_Inputs[j];
+				info.m_InputIDs[j] = getOrAddResultID(
+				    fmt::format("{}_in{}", name, j),
+				    [&]() -> std::uint32_t
+				    {
+					    PROFILE_FUNC;
 
-				// TODO(MarcasRealAccount): Optimize ASAP
-				std::string typeName = TypeIDToString(static_cast<ETypeIDs>(input.m_TypeID));
+					    std::uint32_t pointerType = getOrAddPointerType(
+					        EStorageClass::Input,
+					        spirv,
+					        typesCode,
+					        [&]() -> std::pair<std::string, std::uint32_t>
+					        {
+						        PROFILE_FUNC;
 
-				if (!codes.contains(typeName))
-				{
-					std::uint64_t rows    = ((input.m_TypeID >> 20) & 3) + 1;
-					std::uint64_t columns = ((input.m_TypeID >> 22) & 3) + 1;
+						        // TODO(MarcasRealAccount): Implement user defined types
+						        return getOrAddBuiltinTypeN(static_cast<ETypeIDs>(param.m_TypeID), spirv, typesCode);
+					        });
 
-					CodeInfo type;
-					if (rows == 1)
-					{
-						if (columns != 1)
-						{
-							ETypeIDs    baseTypeID = static_cast<ETypeIDs>(((input.m_TypeID & 0xFFFF) / columns) | (input.m_TypeID & ~0xF0'FFFF));
-							std::string baseName   = TypeIDToString(baseTypeID);
-							if (!codes.contains(baseName))
-							{
-								CodeInfo base;
-								base.m_ResultID = spirv.m_IDBound++;
-								switch (baseTypeID)
-								{
-								case ETypeIDs::Bool:
-									base.m_Code.pushOpTypeBool(base.m_ResultID);
-									break;
-								case ETypeIDs::Byte:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 8, 1);
-									break;
-								case ETypeIDs::UByte:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 8, 0);
-									break;
-								case ETypeIDs::Short:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 16, 1);
-									break;
-								case ETypeIDs::UShort:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 16, 0);
-									break;
-								case ETypeIDs::Int:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 32, 1);
-									break;
-								case ETypeIDs::UInt:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 32, 0);
-									break;
-								case ETypeIDs::Long:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 64, 1);
-									break;
-								case ETypeIDs::ULong:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 46, 0);
-									break;
-								case ETypeIDs::Half:
-									base.m_Code.pushOpTypeFloat(base.m_ResultID, 16);
-									break;
-								case ETypeIDs::Float:
-									base.m_Code.pushOpTypeFloat(base.m_ResultID, 32);
-									break;
-								case ETypeIDs::Double:
-									base.m_Code.pushOpTypeFloat(base.m_ResultID, 64);
-									break;
-								}
-								codes.insert({ baseName, base });
-							}
-
-							type.m_ResultID = spirv.m_IDBound++;
-							type.m_Code.pushOpTypeVector(type.m_ResultID, codes[baseName].m_ResultID, static_cast<std::uint32_t>(columns));
-						}
-						else
-						{
-							type.m_ResultID = spirv.m_IDBound++;
-							switch (static_cast<ETypeIDs>(input.m_TypeID & ~0xF0'0000))
-							{
-							case ETypeIDs::Bool:
-								type.m_Code.pushOpTypeBool(type.m_ResultID);
-								break;
-							case ETypeIDs::Byte:
-								type.m_Code.pushOpTypeInt(type.m_ResultID, 8, 1);
-								break;
-							case ETypeIDs::UByte:
-								type.m_Code.pushOpTypeInt(type.m_ResultID, 8, 0);
-								break;
-							case ETypeIDs::Short:
-								type.m_Code.pushOpTypeInt(type.m_ResultID, 16, 1);
-								break;
-							case ETypeIDs::UShort:
-								type.m_Code.pushOpTypeInt(type.m_ResultID, 16, 0);
-								break;
-							case ETypeIDs::Int:
-								type.m_Code.pushOpTypeInt(type.m_ResultID, 32, 1);
-								break;
-							case ETypeIDs::UInt:
-								type.m_Code.pushOpTypeInt(type.m_ResultID, 32, 0);
-								break;
-							case ETypeIDs::Long:
-								type.m_Code.pushOpTypeInt(type.m_ResultID, 64, 1);
-								break;
-							case ETypeIDs::ULong:
-								type.m_Code.pushOpTypeInt(type.m_ResultID, 64, 0);
-								break;
-							case ETypeIDs::Half:
-								type.m_Code.pushOpTypeFloat(type.m_ResultID, 16);
-								break;
-							case ETypeIDs::Float:
-								type.m_Code.pushOpTypeFloat(type.m_ResultID, 32);
-								break;
-							case ETypeIDs::Double:
-								type.m_Code.pushOpTypeFloat(type.m_ResultID, 64);
-								break;
-							}
-						}
-					}
-					else if (columns != 1)
-					{
-						std::string vectorName = TypeIDToString(static_cast<ETypeIDs>(((input.m_TypeID & 0xFFFF) / columns) | (input.m_TypeID & ~0xC0'FFFF)));
-
-						if (!codes.contains(vectorName))
-						{
-							ETypeIDs    baseTypeID = static_cast<ETypeIDs>(((input.m_TypeID & 0xFFFF) / (rows * columns)) | (input.m_TypeID & ~0xF0'FFFF));
-							std::string baseName   = TypeIDToString(baseTypeID);
-							if (!codes.contains(baseName))
-							{
-								CodeInfo base;
-								base.m_ResultID = spirv.m_IDBound++;
-								switch (baseTypeID)
-								{
-								case ETypeIDs::Bool:
-									base.m_Code.pushOpTypeBool(base.m_ResultID);
-									break;
-								case ETypeIDs::Byte:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 8, 1);
-									break;
-								case ETypeIDs::UByte:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 8, 0);
-									break;
-								case ETypeIDs::Short:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 16, 1);
-									break;
-								case ETypeIDs::UShort:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 16, 0);
-									break;
-								case ETypeIDs::Int:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 32, 1);
-									break;
-								case ETypeIDs::UInt:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 32, 0);
-									break;
-								case ETypeIDs::Long:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 64, 1);
-									break;
-								case ETypeIDs::ULong:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 64, 0);
-									break;
-								case ETypeIDs::Half:
-									base.m_Code.pushOpTypeFloat(base.m_ResultID, 16);
-									break;
-								case ETypeIDs::Float:
-									base.m_Code.pushOpTypeFloat(base.m_ResultID, 32);
-									break;
-								case ETypeIDs::Double:
-									base.m_Code.pushOpTypeFloat(base.m_ResultID, 64);
-									break;
-								}
-								codes.insert({ baseName, base });
-							}
-
-							CodeInfo vector;
-							vector.m_ResultID = spirv.m_IDBound++;
-							vector.m_Code.pushOpTypeVector(vector.m_ResultID, codes[baseName].m_ResultID, static_cast<std::uint32_t>(rows));
-							codes.insert({ vectorName, vector });
-						}
-						type.m_ResultID = spirv.m_IDBound++;
-						type.m_Code.pushOpTypeMatrix(type.m_ResultID, codes[vectorName].m_ResultID, static_cast<std::uint32_t>(columns));
-					}
-					else if (rows != 1)
-					{
-						ETypeIDs    baseTypeID = static_cast<ETypeIDs>(((input.m_TypeID & 0xFFFF) / rows) | (input.m_TypeID & ~0xF0'FFFF));
-						std::string baseName   = TypeIDToString(baseTypeID);
-						if (!codes.contains(baseName))
-						{
-							CodeInfo base;
-							base.m_ResultID = spirv.m_IDBound++;
-							switch (baseTypeID)
-							{
-							case ETypeIDs::Bool:
-								base.m_Code.pushOpTypeBool(base.m_ResultID);
-								break;
-							case ETypeIDs::Byte:
-								base.m_Code.pushOpTypeInt(base.m_ResultID, 8, 1);
-								break;
-							case ETypeIDs::UByte:
-								base.m_Code.pushOpTypeInt(base.m_ResultID, 8, 0);
-								break;
-							case ETypeIDs::Short:
-								base.m_Code.pushOpTypeInt(base.m_ResultID, 16, 1);
-								break;
-							case ETypeIDs::UShort:
-								base.m_Code.pushOpTypeInt(base.m_ResultID, 16, 0);
-								break;
-							case ETypeIDs::Int:
-								base.m_Code.pushOpTypeInt(base.m_ResultID, 32, 1);
-								break;
-							case ETypeIDs::UInt:
-								base.m_Code.pushOpTypeInt(base.m_ResultID, 32, 0);
-								break;
-							case ETypeIDs::Long:
-								base.m_Code.pushOpTypeInt(base.m_ResultID, 64, 1);
-								break;
-							case ETypeIDs::ULong:
-								base.m_Code.pushOpTypeInt(base.m_ResultID, 64, 0);
-								break;
-							case ETypeIDs::Half:
-								base.m_Code.pushOpTypeFloat(base.m_ResultID, 16);
-								break;
-							case ETypeIDs::Float:
-								base.m_Code.pushOpTypeFloat(base.m_ResultID, 32);
-								break;
-							case ETypeIDs::Double:
-								base.m_Code.pushOpTypeFloat(base.m_ResultID, 64);
-								break;
-							}
-							codes.insert({ baseName, base });
-						}
-
-						type.m_ResultID = spirv.m_IDBound++;
-						type.m_Code.pushOpTypeVector(type.m_ResultID, codes[baseName].m_ResultID, static_cast<std::uint32_t>(rows));
-					}
-
-					codes.insert({ typeName, type });
-				}
-
-				std::string pointer = "_ptr_Input_" + typeName;
-				if (!codes.contains(pointer))
-				{
-					CodeInfo ptr;
-					ptr.m_ResultID = spirv.m_IDBound++;
-					ptr.m_Code.pushOpTypePointer(ptr.m_ResultID, EStorageClass::Input, codes[typeName].m_ResultID);
-					codes.insert({ pointer, ptr });
-				}
-
-				info.m_InputIDs[j] = spirv.m_IDBound++;
-				CodeInfo variable;
-				variable.m_ResultID = info.m_InputIDs[j];
-				variable.m_Code.pushOpVariable(codes[pointer].m_ResultID, variable.m_ResultID, EStorageClass::Input);
-				codes.insert({ fmt::format("{}_in{}", name, j), variable });
+					    std::uint32_t resultID = spirv.m_IDBound++;
+					    variablesCode.pushOpVariable(pointerType, resultID, EStorageClass::Input);
+					    decorationsCode.pushOpDecorate(resultID, EDecoration::Location, { static_cast<std::uint32_t>(param.m_Location) });
+					    return resultID;
+				    });
+				interface.emplace_back(info.m_InputIDs[j]);
 			}
 			info.m_OutputIDs.resize(entrypoint.m_Outputs.size());
 			for (std::size_t j = 0; j < entrypoint.m_Outputs.size(); ++j)
 			{
-				auto& output = entrypoint.m_Outputs[j];
+				auto& param         = entrypoint.m_Outputs[j];
+				info.m_OutputIDs[j] = getOrAddResultID(
+				    fmt::format("{}_out{}", name, j),
+				    [&]() -> std::uint32_t
+				    {
+					    PROFILE_FUNC;
 
-				std::string typeName = TypeIDToString(static_cast<ETypeIDs>(output.m_TypeID));
+					    std::uint32_t pointerType = getOrAddPointerType(
+					        EStorageClass::Output,
+					        spirv,
+					        typesCode,
+					        [&]() -> std::pair<std::string, std::uint32_t>
+					        {
+						        PROFILE_FUNC;
 
-				if (!codes.contains(typeName))
-				{
-					std::uint64_t rows    = ((output.m_TypeID >> 20) & 3) + 1;
-					std::uint64_t columns = ((output.m_TypeID >> 22) & 3) + 1;
+						        // TODO(MarcasRealAccount): Implement user defined types
+						        return getOrAddBuiltinTypeN(static_cast<ETypeIDs>(param.m_TypeID), spirv, typesCode);
+					        });
 
-					CodeInfo type;
-					if (rows == 1)
-					{
-						if (columns != 1)
-						{
-							ETypeIDs    baseTypeID = static_cast<ETypeIDs>(((output.m_TypeID & 0xFFFF) / columns) | (output.m_TypeID & ~0xF0'FFFF));
-							std::string baseName   = TypeIDToString(baseTypeID);
-							if (!codes.contains(baseName))
-							{
-								CodeInfo base;
-								base.m_ResultID = spirv.m_IDBound++;
-								switch (baseTypeID)
-								{
-								case ETypeIDs::Bool:
-									base.m_Code.pushOpTypeBool(base.m_ResultID);
-									break;
-								case ETypeIDs::Byte:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 8, 1);
-									break;
-								case ETypeIDs::UByte:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 8, 0);
-									break;
-								case ETypeIDs::Short:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 16, 1);
-									break;
-								case ETypeIDs::UShort:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 16, 0);
-									break;
-								case ETypeIDs::Int:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 32, 1);
-									break;
-								case ETypeIDs::UInt:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 32, 0);
-									break;
-								case ETypeIDs::Long:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 64, 1);
-									break;
-								case ETypeIDs::ULong:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 64, 0);
-									break;
-								case ETypeIDs::Half:
-									base.m_Code.pushOpTypeFloat(base.m_ResultID, 16);
-									break;
-								case ETypeIDs::Float:
-									base.m_Code.pushOpTypeFloat(base.m_ResultID, 32);
-									break;
-								case ETypeIDs::Double:
-									base.m_Code.pushOpTypeFloat(base.m_ResultID, 64);
-									break;
-								}
-								codes.insert({ baseName, base });
-							}
-
-							type.m_ResultID = spirv.m_IDBound++;
-							type.m_Code.pushOpTypeVector(type.m_ResultID, codes[baseName].m_ResultID, static_cast<std::uint32_t>(columns));
-						}
-						else
-						{
-							type.m_ResultID = spirv.m_IDBound++;
-							switch (static_cast<ETypeIDs>(output.m_TypeID & ~0xF0'0000))
-							{
-							case ETypeIDs::Bool:
-								type.m_Code.pushOpTypeBool(type.m_ResultID);
-								break;
-							case ETypeIDs::Byte:
-								type.m_Code.pushOpTypeInt(type.m_ResultID, 8, 1);
-								break;
-							case ETypeIDs::UByte:
-								type.m_Code.pushOpTypeInt(type.m_ResultID, 8, 0);
-								break;
-							case ETypeIDs::Short:
-								type.m_Code.pushOpTypeInt(type.m_ResultID, 16, 1);
-								break;
-							case ETypeIDs::UShort:
-								type.m_Code.pushOpTypeInt(type.m_ResultID, 16, 0);
-								break;
-							case ETypeIDs::Int:
-								type.m_Code.pushOpTypeInt(type.m_ResultID, 32, 1);
-								break;
-							case ETypeIDs::UInt:
-								type.m_Code.pushOpTypeInt(type.m_ResultID, 32, 0);
-								break;
-							case ETypeIDs::Long:
-								type.m_Code.pushOpTypeInt(type.m_ResultID, 64, 1);
-								break;
-							case ETypeIDs::ULong:
-								type.m_Code.pushOpTypeInt(type.m_ResultID, 64, 0);
-								break;
-							case ETypeIDs::Half:
-								type.m_Code.pushOpTypeFloat(type.m_ResultID, 16);
-								break;
-							case ETypeIDs::Float:
-								type.m_Code.pushOpTypeFloat(type.m_ResultID, 32);
-								break;
-							case ETypeIDs::Double:
-								type.m_Code.pushOpTypeFloat(type.m_ResultID, 64);
-								break;
-							}
-						}
-					}
-					else if (columns != 1)
-					{
-						std::string vectorName = TypeIDToString(static_cast<ETypeIDs>(((output.m_TypeID & 0xFFFF) / columns) | (output.m_TypeID & ~0xC0'FFFF)));
-
-						if (!codes.contains(vectorName))
-						{
-							ETypeIDs    baseTypeID = static_cast<ETypeIDs>(((output.m_TypeID & 0xFFFF) / (rows * columns)) | (output.m_TypeID & ~0xF0'FFFF));
-							std::string baseName   = TypeIDToString(baseTypeID);
-							if (!codes.contains(baseName))
-							{
-								CodeInfo base;
-								base.m_ResultID = spirv.m_IDBound++;
-								switch (baseTypeID)
-								{
-								case ETypeIDs::Bool:
-									base.m_Code.pushOpTypeBool(base.m_ResultID);
-									break;
-								case ETypeIDs::Byte:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 8, 1);
-									break;
-								case ETypeIDs::UByte:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 8, 0);
-									break;
-								case ETypeIDs::Short:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 16, 1);
-									break;
-								case ETypeIDs::UShort:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 16, 0);
-									break;
-								case ETypeIDs::Int:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 32, 1);
-									break;
-								case ETypeIDs::UInt:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 32, 0);
-									break;
-								case ETypeIDs::Long:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 64, 1);
-									break;
-								case ETypeIDs::ULong:
-									base.m_Code.pushOpTypeInt(base.m_ResultID, 64, 0);
-									break;
-								case ETypeIDs::Half:
-									base.m_Code.pushOpTypeFloat(base.m_ResultID, 16);
-									break;
-								case ETypeIDs::Float:
-									base.m_Code.pushOpTypeFloat(base.m_ResultID, 32);
-									break;
-								case ETypeIDs::Double:
-									base.m_Code.pushOpTypeFloat(base.m_ResultID, 64);
-									break;
-								}
-								codes.insert({ baseName, base });
-							}
-
-							CodeInfo vector;
-							vector.m_ResultID = spirv.m_IDBound++;
-							vector.m_Code.pushOpTypeVector(vector.m_ResultID, codes[baseName].m_ResultID, static_cast<std::uint32_t>(rows));
-							codes.insert({ vectorName, vector });
-						}
-						type.m_ResultID = spirv.m_IDBound++;
-						type.m_Code.pushOpTypeMatrix(type.m_ResultID, codes[vectorName].m_ResultID, static_cast<std::uint32_t>(columns));
-					}
-					else if (rows != 1)
-					{
-						ETypeIDs    baseTypeID = static_cast<ETypeIDs>(((output.m_TypeID & 0xFFFF) / rows) | (output.m_TypeID & ~0xF0'FFFF));
-						std::string baseName   = TypeIDToString(baseTypeID);
-						if (!codes.contains(baseName))
-						{
-							CodeInfo base;
-							base.m_ResultID = spirv.m_IDBound++;
-							switch (baseTypeID)
-							{
-							case ETypeIDs::Bool:
-								base.m_Code.pushOpTypeBool(base.m_ResultID);
-								break;
-							case ETypeIDs::Byte:
-								base.m_Code.pushOpTypeInt(base.m_ResultID, 8, 1);
-								break;
-							case ETypeIDs::UByte:
-								base.m_Code.pushOpTypeInt(base.m_ResultID, 8, 0);
-								break;
-							case ETypeIDs::Short:
-								base.m_Code.pushOpTypeInt(base.m_ResultID, 16, 1);
-								break;
-							case ETypeIDs::UShort:
-								base.m_Code.pushOpTypeInt(base.m_ResultID, 16, 0);
-								break;
-							case ETypeIDs::Int:
-								base.m_Code.pushOpTypeInt(base.m_ResultID, 32, 1);
-								break;
-							case ETypeIDs::UInt:
-								base.m_Code.pushOpTypeInt(base.m_ResultID, 32, 0);
-								break;
-							case ETypeIDs::Long:
-								base.m_Code.pushOpTypeInt(base.m_ResultID, 64, 1);
-								break;
-							case ETypeIDs::ULong:
-								base.m_Code.pushOpTypeInt(base.m_ResultID, 64, 0);
-								break;
-							case ETypeIDs::Half:
-								base.m_Code.pushOpTypeFloat(base.m_ResultID, 16);
-								break;
-							case ETypeIDs::Float:
-								base.m_Code.pushOpTypeFloat(base.m_ResultID, 32);
-								break;
-							case ETypeIDs::Double:
-								base.m_Code.pushOpTypeFloat(base.m_ResultID, 64);
-								break;
-							}
-							codes.insert({ baseName, base });
-						}
-
-						type.m_ResultID = spirv.m_IDBound++;
-						type.m_Code.pushOpTypeVector(type.m_ResultID, codes[baseName].m_ResultID, static_cast<std::uint32_t>(rows));
-					}
-
-					codes.insert({ typeName, type });
-				}
-
-				std::string pointer = "_ptr_Output_" + typeName;
-				if (!codes.contains(pointer))
-				{
-					CodeInfo ptr;
-					ptr.m_ResultID = spirv.m_IDBound++;
-					ptr.m_Code.pushOpTypePointer(ptr.m_ResultID, EStorageClass::Output, codes[typeName].m_ResultID);
-					codes.insert({ pointer, ptr });
-				}
-
-				info.m_OutputIDs[j] = spirv.m_IDBound++;
-				CodeInfo variable;
-				variable.m_ResultID = info.m_OutputIDs[j];
-				variable.m_Code.pushOpVariable(codes[pointer].m_ResultID, variable.m_ResultID, EStorageClass::Output);
-				codes.insert({ fmt::format("{}_out{}", name, j), variable });
+					    std::uint32_t resultID = spirv.m_IDBound++;
+					    variablesCode.pushOpVariable(pointerType, resultID, EStorageClass::Output);
+					    decorationsCode.pushOpDecorate(resultID, EDecoration::Location, { static_cast<std::uint32_t>(param.m_Location) });
+					    return resultID;
+				    });
+				interface.emplace_back(info.m_OutputIDs[j]);
 			}
+			info.m_FunctionID  = spirv.m_IDBound++;
+			info.m_BaseLabelID = spirv.m_IDBound++;
 
-			std::vector<std::uint32_t> interface;
-			interface.reserve(info.m_InputIDs.size() + info.m_OutputIDs.size());
-			interface.insert(interface.end(), info.m_InputIDs.begin(), info.m_InputIDs.end());
-			interface.insert(interface.end(), info.m_OutputIDs.begin(), info.m_OutputIDs.end());
-			code.pushOpEntryPoint(executionModel, info.m_FunctionID, name, interface);
+			entrypointsCode.pushOpEntryPoint(executionModel, info.m_FunctionID, name, interface);
+
+			functionsCode.pushOpFunction(
+			    getOrAddBuiltinType(ETypeIDs::Void, spirv, typesCode),
+			    info.m_FunctionID,
+			    EFunctionControl::None,
+			    getOrAddFunctionType(
+			        spirv,
+			        typesCode,
+			        [&]() -> std::pair<std::string, std::uint32_t>
+			        {
+				        PROFILE_FUNC;
+
+				        return getOrAddBuiltinTypeN(ETypeIDs::Void, spirv, typesCode);
+			        }));
+			functionsCode.pushOpLabel(info.m_BaseLabelID);
+			functionsCode.pushOpReturn();
+			functionsCode.pushOpFunctionEnd();
 		}
+
+		for (auto itr = m_Capabilities.begin(); itr != m_Capabilities.end(); ++itr)
+			code.pushOpCapability(*itr);
+
+		code.pushOpMemoryModel(EAddressingMode::Logical, EMemoryModel::GLSL450);
+		code.pushCodeBuffer(entrypointsCode);
+		code.pushCodeBuffer(executionModesCode);
+		code.pushCodeBuffer(decorationsCode);
+		code.pushCodeBuffer(typesCode);
+		code.pushCodeBuffer(variablesCode);
+		code.pushCodeBuffer(constantsCode);
+		code.pushCodeBuffer(functionsCode);
 
 		// TODO(MarcasRealAccount): Implement debug info
 		// code.pushOpSource(0x0000'0008, 0x0000'0000, 0x0000'0000);
 
-		{
-			// Push sorted codes
-
-			std::vector<CodeInfo> sortedTypeInfos;
-			for (auto itr = codes.begin(); itr != codes.end(); ++itr)
-			{
-				bool added = false;
-				for (auto itr2 = sortedTypeInfos.begin(); itr2 != sortedTypeInfos.end(); ++itr2)
-				{
-					if (itr2->m_ResultID > itr->second.m_ResultID)
-					{
-						added = true;
-						sortedTypeInfos.insert(itr2, itr->second);
-						break;
-					}
-				}
-
-				if (!added)
-					sortedTypeInfos.emplace_back(itr->second);
-			}
-
-			for (auto& type : sortedTypeInfos)
-				code.pushCodeBuffer(type.m_Code);
-		}
-
-		for (std::size_t i = 0; i < input.m_Entrypoints.size(); ++i)
-		{
-			auto&                  info       = entrypointInfos[i];
-			[[maybe_unused]] auto& entrypoint = input.m_Entrypoints[i];
-
-			code.pushOpFunction(codes["void"].m_ResultID, info.m_FunctionID, EFunctionControl::None, codes["void()"].m_ResultID);
-			code.pushOpLabel(info.m_BaseLabelID);
-
-			code.pushOpReturn();
-			code.pushOpFunctionEnd();
-		}
-
 		return spirv;
 	}
 
-	void SPIRVTranspiler::addWarning(SourceSpan span, SourcePoint point, Utils::CopyMovable<std::string>&& message)
+	std::uint32_t SPIRVTranspiler::getOrAddBuiltinType(ETypeIDs type, SPIRV& spirv, CodeBuffer& typesCode)
 	{
 		PROFILE_FUNC;
 
-		m_Messages.emplace_back(EMessageType::Warning, span, point, message.get());
+		std::string typeName = TypeIDToString(type);
+		return getOrAddResultID(
+		    typeName,
+		    [&]() -> std::uint32_t
+		    {
+			    PROFILE_FUNC;
+
+			    return addBuiltinType(type, spirv, typesCode);
+		    });
 	}
 
-	void SPIRVTranspiler::addError(SourceSpan span, SourcePoint point, Utils::CopyMovable<std::string>&& message)
+	std::pair<std::string, std::uint32_t> SPIRVTranspiler::getOrAddBuiltinTypeN(ETypeIDs type, SPIRV& spirv, CodeBuffer& typesCode)
+	{
+		std::string typeName = TypeIDToString(type);
+		return getOrAddResultIDN(
+		    typeName,
+		    [&]() -> std::uint32_t
+		    {
+			    PROFILE_FUNC;
+
+			    return addBuiltinType(type, spirv, typesCode);
+		    });
+	}
+
+	std::uint32_t SPIRVTranspiler::addBuiltinType(ETypeIDs type, SPIRV& spirv, CodeBuffer& typesCode)
 	{
 		PROFILE_FUNC;
 
-		m_Messages.emplace_back(EMessageType::Error, span, point, message.get());
+		ETypeIDs baseType = TypeIDGetBase(type);
+		if (baseType == type)
+		{
+			// A scalar
+			std::uint32_t resultID = spirv.m_IDBound++;
+			switch (type)
+			{
+			case ETypeIDs::Void:
+				typesCode.pushOpTypeVoid(resultID);
+				break;
+			case ETypeIDs::Bool:
+				typesCode.pushOpTypeBool(resultID);
+				break;
+			case ETypeIDs::Byte:
+				requiresCapability(ECapability::Int8);
+				typesCode.pushOpTypeInt(resultID, 8, 1);
+				break;
+			case ETypeIDs::UByte:
+				requiresCapability(ECapability::Int8);
+				typesCode.pushOpTypeInt(resultID, 8, 0);
+				break;
+			case ETypeIDs::Short:
+				requiresCapability(ECapability::Int16);
+				typesCode.pushOpTypeInt(resultID, 16, 1);
+				break;
+			case ETypeIDs::UShort:
+				requiresCapability(ECapability::Int16);
+				typesCode.pushOpTypeInt(resultID, 16, 0);
+				break;
+			case ETypeIDs::Int:
+				typesCode.pushOpTypeInt(resultID, 32, 1);
+				break;
+			case ETypeIDs::UInt:
+				typesCode.pushOpTypeInt(resultID, 32, 0);
+				break;
+			case ETypeIDs::Long:
+				requiresCapability(ECapability::Int64);
+				typesCode.pushOpTypeInt(resultID, 64, 1);
+				break;
+			case ETypeIDs::ULong:
+				requiresCapability(ECapability::Int64);
+				typesCode.pushOpTypeInt(resultID, 46, 0);
+				break;
+			case ETypeIDs::Half:
+				requiresCapability(ECapability::Float16);
+				typesCode.pushOpTypeFloat(resultID, 16);
+				break;
+			case ETypeIDs::Float:
+				typesCode.pushOpTypeFloat(resultID, 32);
+				break;
+			case ETypeIDs::Double:
+				requiresCapability(ECapability::Float64);
+				typesCode.pushOpTypeFloat(resultID, 64);
+				break;
+			}
+			return resultID;
+		}
+
+		std::uint32_t baseResultID = getOrAddBuiltinType(baseType, spirv, typesCode);
+		std::uint32_t resultID     = spirv.m_IDBound++;
+
+		std::uint64_t typeID  = static_cast<std::uint64_t>(type);
+		std::uint64_t rows    = (typeID >> 20) & 0b11;
+		std::uint64_t columns = (typeID >> 22) & 0b11;
+
+		if (columns == 0)
+		{
+			typesCode.pushOpTypeVector(resultID, baseResultID, static_cast<std::uint32_t>(rows + 1));
+		}
+		else if (rows == 0)
+		{
+			typesCode.pushOpTypeVector(resultID, baseResultID, static_cast<std::uint32_t>(columns + 1));
+		}
+		else
+		{
+			requiresCapability(ECapability::Matrix);
+			typesCode.pushOpTypeMatrix(resultID, baseResultID, static_cast<std::uint32_t>(columns + 1));
+		}
+
+		return resultID;
+	}
+
+	void SPIRVTranspiler::addWarning(std::uint32_t fileID, std::uint32_t sourceID, std::size_t index, std::size_t length, std::size_t point, Utils::CopyMovable<std::string>&& message)
+	{
+		PROFILE_FUNC;
+
+		auto span             = m_Sources->getSpan(index, length, sourceID);
+		auto pt               = m_Sources->getPoint(point, sourceID);
+		span.m_Start.m_FileID = fileID;
+		span.m_End.m_FileID   = fileID;
+		pt.m_FileID           = fileID;
+		m_Messages.emplace_back(EMessageType::Warning, span, pt, message.get());
+	}
+
+	void SPIRVTranspiler::addError(std::uint32_t fileID, std::uint32_t sourceID, std::size_t index, std::size_t length, std::size_t point, Utils::CopyMovable<std::string>&& message)
+	{
+		PROFILE_FUNC;
+
+		auto span             = m_Sources->getSpan(index, length, sourceID);
+		auto pt               = m_Sources->getPoint(point, sourceID);
+		span.m_Start.m_FileID = fileID;
+		span.m_End.m_FileID   = fileID;
+		pt.m_FileID           = fileID;
+		m_Messages.emplace_back(EMessageType::Error, span, pt, message.get());
 	}
 } // namespace Frertex::Transpilers::SPIRV

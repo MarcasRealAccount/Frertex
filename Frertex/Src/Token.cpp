@@ -6,11 +6,99 @@
 
 namespace Frertex
 {
-	Token::Token()
-	    : m_Class(ETokenClass::Unknown), m_Span({ { 0, 0, 0 }, { 0, 0, 0 } }) {}
+	std::ostream& operator<<(std::ostream& stream, SourcePoint point)
+	{
+		std::ostringstream str;
+		str << (point.m_Line + 1) << ':' << (point.m_Column + 1);
+		return stream << str.str();
+	}
 
-	Token::Token(ETokenClass clazz, Utils::CopyMovable<std::string>&& str, SourceSpan span)
-	    : m_Class(clazz), m_Str(str.get()), m_Span(span) {}
+	std::ostream& operator<<(std::ostream& stream, SourceSpan span)
+	{
+		std::ostringstream str;
+		str << span.m_Start << " -> " << span.m_End;
+		return stream << str.str();
+	}
+
+	Source::Source(Utils::CopyMovable<std::string>&& name, Utils::CopyMovable<std::string>&& str, std::uint32_t id)
+	    : m_Name(name.get()), m_Str(str.get()), m_ID(id)
+	{
+		m_Indices.emplace_back(0);
+		for (std::size_t i = 0; i < m_Str.size(); ++i)
+			if (m_Str[i] == '\n')
+				m_Indices.emplace_back(i + 1);
+	}
+
+	std::size_t Source::getLineNumber(std::size_t index) const
+	{
+		auto low  = m_Indices.begin();
+		auto high = m_Indices.end();
+
+		while (high - low > 1)
+		{
+			auto mid = low + (high - low) / 2;
+			if (*mid > index)
+				high = mid - 1;
+			else
+				low = mid;
+		}
+
+		std::size_t line = low - m_Indices.begin();
+		return line;
+	}
+
+	SourcePoint Source::getPoint(std::size_t index) const
+	{
+		std::size_t line   = getLineNumber(index);
+		std::size_t column = index - m_Indices[line];
+
+		return SourcePoint { index, line, column, m_ID, m_ID };
+	}
+
+	std::uint32_t Sources::addSource(Utils::CopyMovable<std::string>&& name, Utils::CopyMovable<std::string>&& str)
+	{
+		return m_Sources.emplace_back(name.get(), str.get(), static_cast<std::uint32_t>(m_Sources.size() + 1)).getID();
+	}
+
+	std::uint32_t Sources::getSourceID(std::string_view name) const
+	{
+		for (auto& source : m_Sources)
+			if (source.getName() == name)
+				return source.getID();
+		return 0;
+	}
+
+	Source* Sources::getSource(std::string_view name)
+	{
+		for (auto& source : m_Sources)
+			if (source.getName() == name)
+				return &source;
+		return nullptr;
+	}
+
+	const Source* Sources::getSource(std::string_view name) const
+	{
+		for (auto& source : m_Sources)
+			if (source.getName() == name)
+				return &source;
+		return nullptr;
+	}
+
+	Source* Sources::getSource(std::uint32_t id)
+	{
+		return (id - 1) < m_Sources.size() ? &m_Sources[id - 1] : nullptr;
+	}
+
+	const Source* Sources::getSource(std::uint32_t id) const
+	{
+		return (id - 1) < m_Sources.size() ? &m_Sources[id - 1] : nullptr;
+	}
+
+	Token::Token()
+	    : m_Class(ETokenClass::Unknown), m_Index(0ULL), m_Length(0ULL), m_FileID(0U), m_SourceID(0U) {}
+
+	Token::Token(ETokenClass clazz, std::size_t index, std::size_t length, std::uint32_t fileID, std::uint32_t sourceID)
+	    : m_Class(clazz), m_Index(index), m_Length(length), m_FileID(fileID), m_SourceID(sourceID) {}
 
 	std::string_view CharacterClassToString(ECharacterClass clazz)
 	{
@@ -48,134 +136,134 @@ namespace Frertex
 		}
 	}
 
-	std::ostream& operator<<(std::ostream& stream, SourcePoint point)
-	{
-		std::ostringstream str;
-		str << (point.m_Line + 1) << ':' << (point.m_Column + 1);
-		return stream << str.str();
-	}
-
-	std::ostream& operator<<(std::ostream& stream, SourceSpan span)
-	{
-		std::ostringstream str;
-		str << span.m_Start << " -> " << span.m_End;
-		return stream << str.str();
-	}
-
-	std::ostream& operator<<(std::ostream& stream, const Token& token)
-	{
-		std::ostringstream str;
-		str << TokenClassToString(token.m_Class) << ": " << token.m_Span << ": \"" << Utils::EscapeString(token.m_Str) << '"';
-		return stream << str.str();
-	}
-
-	ECharacterClass GetCharacterClass(char c)
-	{
-		PROFILE_FUNC;
-
-		switch (c)
-		{
-		case '\t': return ECharacterClass::Tab;
-		case '\n': return ECharacterClass::Newline;
-		case '\v': return ECharacterClass::Whitespace;
-		case '\f': return ECharacterClass::Whitespace;
-		case '\r': return ECharacterClass::Whitespace;
-		case ' ': return ECharacterClass::Whitespace;
-		case '!': return ECharacterClass::Symbol;
-		case '"': return ECharacterClass::Symbol;
-		case '#': return ECharacterClass::Symbol;
-		case '$': return ECharacterClass::Symbol;
-		case '%': return ECharacterClass::Symbol;
-		case '&': return ECharacterClass::Symbol;
-		case '\'': return ECharacterClass::Symbol;
-		case '(': return ECharacterClass::Symbol;
-		case ')': return ECharacterClass::Symbol;
-		case '*': return ECharacterClass::Symbol;
-		case '+': return ECharacterClass::Symbol;
-		case ',': return ECharacterClass::Symbol;
-		case '-': return ECharacterClass::Symbol;
-		case '.': return ECharacterClass::Symbol;
-		case '/': return ECharacterClass::Symbol;
-		case '0': return ECharacterClass::Digit;
-		case '1': return ECharacterClass::Digit;
-		case '2': return ECharacterClass::Digit;
-		case '3': return ECharacterClass::Digit;
-		case '4': return ECharacterClass::Digit;
-		case '5': return ECharacterClass::Digit;
-		case '6': return ECharacterClass::Digit;
-		case '7': return ECharacterClass::Digit;
-		case '8': return ECharacterClass::Digit;
-		case '9': return ECharacterClass::Digit;
-		case ':': return ECharacterClass::Symbol;
-		case ';': return ECharacterClass::Symbol;
-		case '<': return ECharacterClass::Symbol;
-		case '=': return ECharacterClass::Symbol;
-		case '>': return ECharacterClass::Symbol;
-		case '?': return ECharacterClass::Symbol;
-		case '@': return ECharacterClass::Symbol;
-		case 'A': return ECharacterClass::NonDigit;
-		case 'B': return ECharacterClass::NonDigit;
-		case 'C': return ECharacterClass::NonDigit;
-		case 'D': return ECharacterClass::NonDigit;
-		case 'E': return ECharacterClass::NonDigit;
-		case 'F': return ECharacterClass::NonDigit;
-		case 'G': return ECharacterClass::NonDigit;
-		case 'H': return ECharacterClass::NonDigit;
-		case 'I': return ECharacterClass::NonDigit;
-		case 'J': return ECharacterClass::NonDigit;
-		case 'K': return ECharacterClass::NonDigit;
-		case 'L': return ECharacterClass::NonDigit;
-		case 'M': return ECharacterClass::NonDigit;
-		case 'N': return ECharacterClass::NonDigit;
-		case 'O': return ECharacterClass::NonDigit;
-		case 'P': return ECharacterClass::NonDigit;
-		case 'Q': return ECharacterClass::NonDigit;
-		case 'R': return ECharacterClass::NonDigit;
-		case 'S': return ECharacterClass::NonDigit;
-		case 'T': return ECharacterClass::NonDigit;
-		case 'U': return ECharacterClass::NonDigit;
-		case 'V': return ECharacterClass::NonDigit;
-		case 'W': return ECharacterClass::NonDigit;
-		case 'X': return ECharacterClass::NonDigit;
-		case 'Y': return ECharacterClass::NonDigit;
-		case 'Z': return ECharacterClass::NonDigit;
-		case '[': return ECharacterClass::Symbol;
-		case '\\': return ECharacterClass::Symbol;
-		case ']': return ECharacterClass::Symbol;
-		case '^': return ECharacterClass::Symbol;
-		case '_': return ECharacterClass::Symbol;
-		case '`': return ECharacterClass::Symbol;
-		case 'a': return ECharacterClass::NonDigit;
-		case 'b': return ECharacterClass::NonDigit;
-		case 'c': return ECharacterClass::NonDigit;
-		case 'd': return ECharacterClass::NonDigit;
-		case 'e': return ECharacterClass::NonDigit;
-		case 'f': return ECharacterClass::NonDigit;
-		case 'g': return ECharacterClass::NonDigit;
-		case 'h': return ECharacterClass::NonDigit;
-		case 'i': return ECharacterClass::NonDigit;
-		case 'j': return ECharacterClass::NonDigit;
-		case 'k': return ECharacterClass::NonDigit;
-		case 'l': return ECharacterClass::NonDigit;
-		case 'm': return ECharacterClass::NonDigit;
-		case 'n': return ECharacterClass::NonDigit;
-		case 'o': return ECharacterClass::NonDigit;
-		case 'p': return ECharacterClass::NonDigit;
-		case 'q': return ECharacterClass::NonDigit;
-		case 'r': return ECharacterClass::NonDigit;
-		case 's': return ECharacterClass::NonDigit;
-		case 't': return ECharacterClass::NonDigit;
-		case 'u': return ECharacterClass::NonDigit;
-		case 'v': return ECharacterClass::NonDigit;
-		case 'w': return ECharacterClass::NonDigit;
-		case 'x': return ECharacterClass::NonDigit;
-		case 'y': return ECharacterClass::NonDigit;
-		case 'z': return ECharacterClass::NonDigit;
-		case '{': return ECharacterClass::Symbol;
-		case '|': return ECharacterClass::Symbol;
-		case '}': return ECharacterClass::Symbol;
-		case '~': return ECharacterClass::Symbol;
-		default: return ECharacterClass::Unknown;
-		}
-	}
+	ECharacterClass s_CharacterClasses[128] = {
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Tab,
+		ECharacterClass::Newline,
+		ECharacterClass::Whitespace,
+		ECharacterClass::Whitespace,
+		ECharacterClass::Whitespace,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Unknown,
+		ECharacterClass::Whitespace,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Digit,
+		ECharacterClass::Digit,
+		ECharacterClass::Digit,
+		ECharacterClass::Digit,
+		ECharacterClass::Digit,
+		ECharacterClass::Digit,
+		ECharacterClass::Digit,
+		ECharacterClass::Digit,
+		ECharacterClass::Digit,
+		ECharacterClass::Digit,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::NonDigit,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Symbol,
+		ECharacterClass::Unknown
+	};
 } // namespace Frertex

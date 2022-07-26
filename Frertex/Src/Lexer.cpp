@@ -3,6 +3,9 @@
 
 namespace Frertex
 {
+	Lexer::Lexer(Sources* sources)
+	    : m_Sources(sources) {}
+
 	AST Lexer::lex(Utils::CopyMovable<std::vector<Token>>&& tokens)
 	{
 		PROFILE_FUNC;
@@ -15,23 +18,36 @@ namespace Frertex
 		return ast;
 	}
 
-	void Lexer::addWarning(SourceSpan span, SourcePoint point, Utils::CopyMovable<std::string>&& message)
+	void Lexer::addWarning(std::uint32_t fileID, std::uint32_t sourceID, std::size_t index, std::size_t length, std::size_t point, Utils::CopyMovable<std::string>&& message)
 	{
 		PROFILE_FUNC;
 
-		m_Messages.emplace_back(EMessageType::Warning, span, point, message.get());
+		auto span             = m_Sources->getSpan(index, length, sourceID);
+		auto pt               = m_Sources->getPoint(point, sourceID);
+		span.m_Start.m_FileID = fileID;
+		span.m_End.m_FileID   = fileID;
+		pt.m_FileID           = fileID;
+		m_Messages.emplace_back(EMessageType::Warning, span, pt, message.get());
 	}
 
-	void Lexer::addError(SourceSpan span, SourcePoint point, Utils::CopyMovable<std::string>&& message)
+	void Lexer::addError(std::uint32_t fileID, std::uint32_t sourceID, std::size_t index, std::size_t length, std::size_t point, Utils::CopyMovable<std::string>&& message)
 	{
 		PROFILE_FUNC;
 
-		m_Messages.emplace_back(EMessageType::Error, span, point, message.get());
+		auto span             = m_Sources->getSpan(index, length, sourceID);
+		auto pt               = m_Sources->getPoint(point, sourceID);
+		span.m_Start.m_FileID = fileID;
+		span.m_End.m_FileID   = fileID;
+		pt.m_FileID           = fileID;
+		m_Messages.emplace_back(EMessageType::Error, span, pt, message.get());
 	}
 
 	LexResult Lexer::lexTranslationUnit(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
+
+		if (start > end)
+			return {};
 
 		std::size_t          usedTokens = 0;
 		std::vector<ASTNode> nodes;
@@ -48,6 +64,56 @@ namespace Frertex
 		return { usedTokens, { EASTNodeType::TranslationUnit, Token {}, std::move(nodes) } };
 	}
 
+	LexResult Lexer::lexIntegerLiteral(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	{
+		PROFILE_FUNC;
+
+		if (start > end)
+			return {};
+
+		Token& token = tokens[start];
+		if (token.m_Class != ETokenClass::Integer &&
+		    token.m_Class != ETokenClass::BinaryInteger &&
+		    token.m_Class != ETokenClass::OctalInteger &&
+		    token.m_Class != ETokenClass::HexInteger)
+			return {};
+
+		return { 1, { EASTNodeType::IntegerLiteral, std::move(token) } };
+	}
+
+	LexResult Lexer::lexFloatLiteral(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	{
+		PROFILE_FUNC;
+
+		if (start > end)
+			return {};
+
+		Token& token = tokens[start];
+		if (token.m_Class != ETokenClass::Float &&
+		    token.m_Class != ETokenClass::HexFloat)
+			return {};
+
+		return { 1, { EASTNodeType::FloatLiteral, std::move(token) } };
+	}
+
+	LexResult Lexer::lexLiteral(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	{
+		PROFILE_FUNC;
+
+		if (start > end)
+			return {};
+
+		auto result = lexIntegerLiteral(tokens, start, end);
+		if (result.m_UsedTokens != 0)
+			return result;
+
+		result = lexFloatLiteral(tokens, start, end);
+		if (result.m_UsedTokens != 0)
+			return result;
+
+		return {};
+	}
+
 	LexResult Lexer::lexTypeQualifier(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
@@ -59,8 +125,8 @@ namespace Frertex
 		if (token.m_Class != ETokenClass::Identifier)
 			return {};
 
-		auto& str         = token.m_Str;
-		bool  isQualifier = false;
+		auto str         = token.getView(*m_Sources);
+		bool isQualifier = false;
 		if (str == "in" ||
 		    str == "out" ||
 		    str == "inout")
@@ -132,6 +198,90 @@ namespace Frertex
 		return { usedTokens, { EASTNodeType::Typename, std::move(identifierToken), std::move(nodes) } };
 	}
 
+	LexResult Lexer::lexArgument(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	{
+		PROFILE_FUNC;
+
+		if (start > end)
+			return {};
+
+		std::size_t          usedTokens = 0;
+		std::vector<ASTNode> nodes;
+
+		auto result = lexLiteral(tokens, start + usedTokens, end);
+		if (result.m_UsedTokens == 0)
+			return {};
+		usedTokens += result.m_UsedTokens;
+		nodes.emplace_back(std::move(result.m_Node));
+
+		auto token = nodes[0].getToken();
+
+		return { usedTokens, { EASTNodeType::Argument, std::move(token), std::move(nodes) } };
+	}
+
+	LexResult Lexer::lexArguments(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	{
+		PROFILE_FUNC;
+
+		if (start > end)
+			return { 0, { EASTNodeType::Arguments } };
+
+		std::size_t          usedTokens = 0;
+		std::vector<ASTNode> nodes;
+
+		{
+			// Argument opening
+			auto& token = tokens[start + usedTokens];
+			if (token.m_Class != ETokenClass::Symbol || token.getView(*m_Sources) != "(")
+				return { 0, { EASTNodeType::Arguments } };
+			++usedTokens;
+		}
+		std::size_t argumentsEnd = start + usedTokens;
+		{
+			// Closing
+			std::uint64_t count = 1;
+			while (argumentsEnd <= end)
+			{
+				Token& token = tokens[argumentsEnd];
+				if (token.m_Class == ETokenClass::Symbol)
+				{
+					if (token.getView(*m_Sources) == "(")
+						++count;
+					else if (token.getView(*m_Sources) == ")")
+						--count;
+					++argumentsEnd;
+				}
+				else
+				{
+					++argumentsEnd;
+					continue;
+				}
+				if (count == 0)
+					break;
+			}
+			if (count != 0)
+				return { 0, { EASTNodeType::Arguments } };
+		}
+
+		while (start + usedTokens < argumentsEnd - 1)
+		{
+			auto result = lexArgument(tokens, start + usedTokens, argumentsEnd - 1);
+			if (result.m_UsedTokens == 0)
+				break;
+			usedTokens += result.m_UsedTokens;
+			nodes.emplace_back(std::move(result.m_Node));
+			if (start + usedTokens > end)
+				break;
+
+			auto& token = tokens[start + usedTokens];
+			if (token.m_Class != ETokenClass::Symbol || token.getView(*m_Sources) != ",")
+				break;
+			++usedTokens;
+		}
+
+		return { argumentsEnd - start, { EASTNodeType::Arguments, Token {}, std::move(nodes) } };
+	}
+
 	LexResult Lexer::lexAttribute(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
@@ -139,13 +289,22 @@ namespace Frertex
 		if (start > end)
 			return {};
 
-		auto result = lexIdentifier(tokens, start, end);
+		std::size_t          usedTokens = 0;
+		std::vector<ASTNode> nodes;
+
+		auto result = lexIdentifier(tokens, start + usedTokens, end);
 		if (result.m_UsedTokens == 0)
 			return {};
+		usedTokens += result.m_UsedTokens;
+		nodes.emplace_back(std::move(result.m_Node));
 
-		auto identifierToken = result.m_Node.getToken();
+		result = lexArguments(tokens, start + usedTokens, end);
+		usedTokens += result.m_UsedTokens;
+		nodes.emplace_back(std::move(result.m_Node));
 
-		return { result.m_UsedTokens, { EASTNodeType::Attribute, std::move(identifierToken), { std::move(result.m_Node) } } };
+		auto identifierToken = nodes[0].getToken();
+
+		return { usedTokens, { EASTNodeType::Attribute, std::move(identifierToken), std::move(nodes) } };
 	}
 
 	LexResult Lexer::lexAttributes(std::vector<Token>& tokens, std::size_t start, std::size_t end)
@@ -161,11 +320,11 @@ namespace Frertex
 		{
 			// Opening
 			Token& a = tokens[start + usedTokens];
-			if (a.m_Class != ETokenClass::Symbol || a.m_Str != "[")
+			if (a.m_Class != ETokenClass::Symbol || a.getView(*m_Sources) != "[")
 				return { 0, { EASTNodeType::Attributes } };
 			++usedTokens;
 			Token& b = tokens[start + usedTokens];
-			if (b.m_Class != ETokenClass::Symbol || b.m_Str != "[")
+			if (b.m_Class != ETokenClass::Symbol || b.getView(*m_Sources) != "[")
 				return { 0, { EASTNodeType::Attributes } };
 			++usedTokens;
 		}
@@ -176,7 +335,7 @@ namespace Frertex
 			while (attributesEnd <= end)
 			{
 				Token& token = tokens[attributesEnd];
-				if (token.m_Class != ETokenClass::Symbol || token.m_Str != "]")
+				if (token.m_Class != ETokenClass::Symbol || token.getView(*m_Sources) != "]")
 				{
 					count = 0;
 					++attributesEnd;
@@ -196,15 +355,20 @@ namespace Frertex
 		{
 			auto result = lexAttribute(tokens, start + usedTokens, attributesEnd - 2);
 			if (result.m_UsedTokens == 0)
-				return { 0, { EASTNodeType::Attributes } };
+				break;
 			usedTokens += result.m_UsedTokens;
 			nodes.emplace_back(std::move(result.m_Node));
+
+			auto& token = tokens[start + usedTokens];
+			if (token.m_Class != ETokenClass::Symbol || token.getView(*m_Sources) != ",")
+				break;
+			++usedTokens;
 		}
 
 		return { attributesEnd - start, { EASTNodeType::Attributes, Token {}, std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexArgument(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	LexResult Lexer::lexParameter(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -232,22 +396,56 @@ namespace Frertex
 
 		auto identifierToken = nodes[2].getToken();
 
-		return { usedTokens, { EASTNodeType::Argument, std::move(identifierToken), std::move(nodes) } };
+		return { usedTokens, { EASTNodeType::Parameter, std::move(identifierToken), std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexArguments(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	LexResult Lexer::lexParameters(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
 		if (start > end)
-			return {};
+			return { 0, { EASTNodeType::Parameters } };
 
 		std::size_t          usedTokens = 0;
 		std::vector<ASTNode> nodes;
 
-		while (true)
 		{
-			auto result = lexArgument(tokens, start + usedTokens, end);
+			// Argument opening
+			auto& token = tokens[start + usedTokens];
+			if (token.m_Class != ETokenClass::Symbol || token.getView(*m_Sources) != "(")
+				return { 0, { EASTNodeType::Parameters } };
+			++usedTokens;
+		}
+		std::size_t parametersEnd = start + usedTokens;
+		{
+			// Closing
+			std::uint64_t count = 1;
+			while (parametersEnd <= end)
+			{
+				Token& token = tokens[parametersEnd];
+				if (token.m_Class == ETokenClass::Symbol)
+				{
+					if (token.getView(*m_Sources) == "(")
+						++count;
+					else if (token.getView(*m_Sources) == ")")
+						--count;
+					++parametersEnd;
+				}
+				else
+				{
+					++parametersEnd;
+					continue;
+				}
+				if (count == 0)
+					break;
+			}
+			if (count != 0)
+				return { 0, { EASTNodeType::Parameters } };
+		}
+
+		while (start + usedTokens < parametersEnd - 1)
+		{
+			auto result = lexParameter(tokens, start + usedTokens, parametersEnd - 1);
 			if (result.m_UsedTokens == 0)
 				break;
 			usedTokens += result.m_UsedTokens;
@@ -256,12 +454,12 @@ namespace Frertex
 				break;
 
 			auto& token = tokens[start + usedTokens];
-			if (token.m_Class != ETokenClass::Symbol || token.m_Str != ",")
+			if (token.m_Class != ETokenClass::Symbol || token.getView(*m_Sources) != ",")
 				break;
 			++usedTokens;
 		}
 
-		return { usedTokens, { EASTNodeType::Arguments, Token {}, std::move(nodes) } };
+		return { parametersEnd - start, { EASTNodeType::Parameters, Token {}, std::move(nodes) } };
 	}
 
 	LexResult Lexer::lexBracedInitList(std::vector<Token>& tokens, std::size_t start, std::size_t end)
@@ -277,7 +475,7 @@ namespace Frertex
 		{
 			// Opening
 			Token& token = tokens[start + usedTokens];
-			if (token.m_Class != ETokenClass::Symbol && token.m_Str != "{")
+			if (token.m_Class != ETokenClass::Symbol && token.getView(*m_Sources) != "{")
 				return {};
 			++usedTokens;
 		}
@@ -290,9 +488,9 @@ namespace Frertex
 				Token& token = tokens[listEnd];
 				if (token.m_Class == ETokenClass::Symbol)
 				{
-					if (token.m_Str == "{")
+					if (token.getView(*m_Sources) == "{")
 						++count;
-					else if (token.m_Str == "}")
+					else if (token.getView(*m_Sources) == "}")
 						--count;
 					++listEnd;
 				}
@@ -317,7 +515,7 @@ namespace Frertex
 			nodes.emplace_back(std::move(result.m_Node));
 
 			auto& token = tokens[start + usedTokens];
-			if (token.m_Class != ETokenClass::Symbol || token.m_Str != ",")
+			if (token.m_Class != ETokenClass::Symbol || token.getView(*m_Sources) != ",")
 				break;
 			++usedTokens;
 		}
@@ -363,7 +561,7 @@ namespace Frertex
 				return {};
 
 			bool assignment = false;
-			if (token.m_Str == "=")
+			if (token.getView(*m_Sources) == "=")
 				assignment = true;
 
 			if (!assignment)
@@ -413,7 +611,7 @@ namespace Frertex
 		nodes.emplace_back(std::move(result.m_Node));
 
 		auto& token = tokens[start + usedTokens];
-		if (token.m_Class != ETokenClass::Symbol || token.m_Str != ";")
+		if (token.m_Class != ETokenClass::Symbol || token.getView(*m_Sources) != ";")
 			return {};
 		++usedTokens;
 
@@ -433,7 +631,7 @@ namespace Frertex
 		{
 			// Opening
 			Token& token = tokens[start + usedTokens];
-			if (token.m_Class != ETokenClass::Symbol && token.m_Str != "{")
+			if (token.m_Class != ETokenClass::Symbol && token.getView(*m_Sources) != "{")
 				return {};
 			++usedTokens;
 		}
@@ -446,9 +644,9 @@ namespace Frertex
 				Token& token = tokens[blockEnd];
 				if (token.m_Class == ETokenClass::Symbol)
 				{
-					if (token.m_Str == "{")
+					if (token.getView(*m_Sources) == "{")
 						++count;
-					else if (token.m_Str == "}")
+					else if (token.getView(*m_Sources) == "}")
 						--count;
 					++blockEnd;
 				}
@@ -488,7 +686,7 @@ namespace Frertex
 
 		{
 			auto& token = tokens[start + usedTokens];
-			if (token.m_Class != ETokenClass::Identifier || token.m_Str != "return")
+			if (token.m_Class != ETokenClass::Identifier || token.getView(*m_Sources) != "return")
 				return {};
 			++usedTokens;
 		}
@@ -514,7 +712,7 @@ namespace Frertex
 
 		{
 			auto& token = tokens[start + usedTokens];
-			if (token.m_Class != ETokenClass::Symbol || token.m_Str != ";")
+			if (token.m_Class != ETokenClass::Symbol || token.getView(*m_Sources) != ";")
 				return {};
 			++usedTokens;
 		}
@@ -599,15 +797,7 @@ namespace Frertex
 		if (start + usedTokens > end)
 			return {};
 
-		{
-			// Argument opening
-			auto& token = tokens[start + usedTokens];
-			if (token.m_Class != ETokenClass::Symbol || token.m_Str != "(")
-				return {};
-			++usedTokens;
-		}
-
-		result = lexArguments(tokens, start + usedTokens, end);
+		result = lexParameters(tokens, start + usedTokens, end);
 		if (result.m_UsedTokens == 0)
 			return {};
 		usedTokens += result.m_UsedTokens;
@@ -615,14 +805,6 @@ namespace Frertex
 
 		if (start + usedTokens > end)
 			return {};
-
-		{
-			// Argument closing
-			auto& token = tokens[start + usedTokens];
-			if (token.m_Class != ETokenClass::Symbol || token.m_Str != ")")
-				return {};
-			++usedTokens;
-		}
 
 		result = lexCompoundStatement(tokens, start + usedTokens, end);
 		if (result.m_UsedTokens == 0)

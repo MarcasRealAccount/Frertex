@@ -270,6 +270,16 @@ namespace Frertex::Transpilers::SPIRV
 			m_Code.emplace_back(initializer);
 	}
 
+	void CodeBuffer::pushOpDecorate(std::uint32_t target, EDecoration decoration, const std::vector<std::uint32_t>& literals)
+	{
+		PROFILE_FUNC;
+
+		m_Code.emplace_back(static_cast<std::uint32_t>(0x0003'0047 + (literals.size() << 16)));
+		m_Code.emplace_back(target);
+		m_Code.emplace_back(static_cast<std::uint32_t>(decoration));
+		m_Code.insert(m_Code.end(), literals.begin(), literals.end());
+	}
+
 	void CodeBuffer::pushOpLabel(std::uint32_t result)
 	{
 		PROFILE_FUNC;

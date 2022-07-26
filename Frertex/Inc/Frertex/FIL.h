@@ -263,6 +263,7 @@ namespace Frertex
 	};
 
 	std::string TypeIDToString(ETypeIDs type);
+	ETypeIDs    TypeIDGetBase(ETypeIDs type);
 
 	struct FunctionDefinition
 	{
@@ -292,19 +293,21 @@ namespace Frertex
 	{
 	public:
 		std::uint64_t m_CodeOffset;
-		std::uint64_t m_Line, m_File;
+		std::uint64_t m_Line;
+		std::uint32_t m_FileID, m_SourceID;
 	};
 
 	struct FunctionParameter
 	{
 	public:
-		FunctionParameter(Utils::CopyMovable<std::vector<ETypeQualifier>>&& qualifiers, std::uint32_t builtinTypeID, Utils::CopyMovable<std::string>&& typeName)
-		    : m_Qualifiers(qualifiers.get()), m_BuiltinTypeID(builtinTypeID), m_Typename(typeName.get()) {}
+		FunctionParameter(Utils::CopyMovable<std::vector<ETypeQualifier>>&& qualifiers, std::uint32_t builtinTypeID, Utils::CopyMovable<std::string>&& typeName, std::uint64_t location)
+		    : m_Qualifiers(qualifiers.get()), m_BuiltinTypeID(builtinTypeID), m_Typename(typeName.get()), m_Location(location) {}
 
 	public:
 		std::vector<ETypeQualifier> m_Qualifiers;
 		std::uint32_t               m_BuiltinTypeID;
 		std::string                 m_Typename;
+		std::uint64_t               m_Location;
 	};
 
 	struct FunctionDeclaration : FunctionDefinition
@@ -331,10 +334,11 @@ namespace Frertex
 	struct FILEntrypointParameter
 	{
 	public:
-		FILEntrypointParameter(std::uint64_t typeID)
-		    : m_TypeID(typeID) {}
+		FILEntrypointParameter(std::uint64_t location, std::uint64_t typeID)
+		    : m_Location(location), m_TypeID(typeID) {}
 
 	public:
+		std::uint64_t m_Location;
 		std::uint64_t m_TypeID;
 	};
 

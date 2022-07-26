@@ -22,7 +22,7 @@
 #undef FormatMessage
 #endif
 
-Frertex::IncludeData ReadIncludedFile(std::string_view filename)
+Frertex::IncludeData ReadIncludedFile(std::string_view filename, std::string_view originalFilename)
 {
 	std::ifstream file { std::string { filename }, std::ios::ate };
 	if (file)
@@ -37,18 +37,22 @@ Frertex::IncludeData ReadIncludedFile(std::string_view filename)
 	return {};
 }
 
-std::string ReadFileLine(std::string_view filename, Frertex::SourcePoint line, [[maybe_unused]] void* userData)
+std::string ReadFileLine(std::string_view filename, Frertex::SourcePoint line, Frertex::Sources* sources, [[maybe_unused]] void* userData)
 {
-	auto result = ReadIncludedFile(filename);
-	if (result.m_Status == Frertex::EIncludeStatus::Failure)
+	if (!sources)
 		return {};
-	std::size_t lineStart = line.m_Index;
-	while (lineStart > 0 && result.m_Source[lineStart - 1] != '\n')
-		--lineStart;
-	std::size_t lineEnd = line.m_Index;
-	while (lineEnd < result.m_Source.size() && result.m_Source[lineEnd] != '\n')
-		++lineEnd;
-	return result.m_Source.substr(lineStart, lineEnd - lineStart);
+	Frertex::Source* source = sources->getSource(line.m_SourceID);
+	if (!source)
+		return {};
+
+	auto&       str       = source->getStr();
+	std::size_t lineStart = str.find_last_of('\n', line.m_Index);
+	if (lineStart >= str.size())
+		lineStart = 0;
+	std::size_t lineEnd = str.find_first_of('\n', line.m_Index);
+	if (lineEnd >= str.size())
+		lineEnd = str.size();
+	return str.substr(lineStart, lineEnd - lineStart);
 }
 
 std::size_t UTF8Codepoints(const std::string& str)
@@ -80,7 +84,7 @@ std::size_t UTF8Codepoints(const std::string& str)
 	return count;
 }
 
-void PrintASTNode(const Frertex::ASTNode& node, std::vector<std::vector<std::string>>& lines, std::vector<bool>& layers, bool end = true)
+void PrintASTNode(const Frertex::ASTNode& node, Frertex::Sources* sources, std::vector<std::vector<std::string>>& lines, std::vector<bool>& layers, bool end = true)
 {
 	{
 		std::vector<std::string> line;
@@ -100,18 +104,21 @@ void PrintASTNode(const Frertex::ASTNode& node, std::vector<std::vector<std::str
 
 		layers.emplace_back(!end);
 
+
 		str << Frertex::ASTNodeTypeToString(node.getType());
 		line.emplace_back(str.str());
 		str         = {};
 		auto& token = node.getToken();
-		str << '(' << token.m_Span << ')';
+		auto  span  = token.getSpan(*sources);
+		str << '(' << span << ')';
 		line.emplace_back(str.str());
 		str = {};
-		if (token.m_Span.m_Start.m_Line == token.m_Span.m_End.m_Line)
+		if (span.m_Start.m_Line == span.m_End.m_Line)
 		{
-			if (token.m_Str.find_first_of('\n') >= token.m_Str.size())
+			auto tokenStr = token.getView(*sources);
+			if (tokenStr.find_first_of('\n') >= tokenStr.size())
 			{
-				str << "= \"" << Frertex::Utils::EscapeString(token.m_Str) << '"';
+				str << "= \"" << Frertex::Utils::EscapeString(tokenStr) << '"';
 				line.emplace_back(str.str());
 			}
 		}
@@ -120,16 +127,16 @@ void PrintASTNode(const Frertex::ASTNode& node, std::vector<std::vector<std::str
 
 	auto& children = node.getChildren();
 	for (std::size_t i = 0; i < children.size(); ++i)
-		PrintASTNode(children[i], lines, layers, i >= children.size() - 1);
+		PrintASTNode(children[i], sources, lines, layers, i >= children.size() - 1);
 
 	layers.pop_back();
 }
 
-void PrintAST(const Frertex::AST& ast)
+void PrintAST(const Frertex::AST& ast, Frertex::Sources* sources)
 {
 	std::vector<std::vector<std::string>> lines;
 	std::vector<bool>                     layers;
-	PrintASTNode(*ast.getRoot(), lines, layers);
+	PrintASTNode(*ast.getRoot(), sources, lines, layers);
 
 	std::vector<std::size_t> sizes;
 	for (auto& line : lines)
@@ -198,28 +205,30 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 	Timer              timer {};
 	std::ostringstream times;
 
+	Frertex::Sources sources;
+
+	auto mainSource = sources.addSource("Test.frer", ReadIncludedFile("Test.frer", "").m_Source);
+
 	timer.begin();
-	auto tokens = Frertex::Tokenize(ReadIncludedFile("Test.frer").m_Source);
+	auto tokens = Frertex::Tokenize(sources.getSource(mainSource));
 	timer.end();
 	times << timer.formatTime("Tokenizer");
 
 	timer.begin();
-	Frertex::Preprocessor preprocessor { &ReadIncludedFile };
-	tokens = preprocessor.process(std::move(tokens), "Test.frer");
+	Frertex::Preprocessor preprocessor { &sources, &ReadIncludedFile };
+	tokens = preprocessor.process(std::move(tokens));
 	timer.end();
 	times << timer.formatTime("Preprocessor");
 
 	bool errored = false;
 	if (!preprocessor.getMessages().empty())
 	{
-		auto& includedFilenames = preprocessor.getIncludeFilenames();
-
 		for (auto& message : preprocessor.getMessages())
 		{
 			std::string output = Frertex::FormatMessage(
 			    message,
-			    includedFilenames,
-			    &ReadFileLine);
+			    &ReadFileLine,
+			    &sources);
 			switch (message.m_Type)
 			{
 			case Frertex::EMessageType::Warning:
@@ -305,33 +314,19 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 	//std::cout << str.str() << "\n";
 
 	timer.begin();
-	Frertex::Lexer lexer {};
+	Frertex::Lexer lexer { &sources };
 	auto           ast = lexer.lex(std::move(tokens));
 	timer.end();
 	times << timer.formatTime("Lexer");
 
 	if (!lexer.getMessages().empty())
 	{
-		auto& includedFilenames = preprocessor.getIncludeFilenames();
-
 		for (auto& message : lexer.getMessages())
 		{
 			std::string output = Frertex::FormatMessage(
 			    message,
-			    includedFilenames,
-			    [](std::string_view filename, Frertex::SourcePoint line, [[maybe_unused]] void* userData) -> std::string
-			    {
-				    auto result = ReadIncludedFile(filename);
-				    if (result.m_Status == Frertex::EIncludeStatus::Failure)
-					    return {};
-				    std::size_t lineStart = line.m_Index;
-				    while (lineStart > 0 && result.m_Source[lineStart - 1] != '\n')
-					    --lineStart;
-				    std::size_t lineEnd = line.m_Index;
-				    while (lineEnd < result.m_Source.size() && result.m_Source[lineEnd] != '\n')
-					    ++lineEnd;
-				    return result.m_Source.substr(lineStart, lineEnd - lineStart);
-			    });
+			    &ReadFileLine,
+			    &sources);
 			switch (message.m_Type)
 			{
 			case Frertex::EMessageType::Warning:
@@ -351,40 +346,26 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 			return 2;
 		}
 	}
-	//if (!ast.getRoot())
-	//	std::cout << "No Root\n";
-	//else
-	//	PrintAST(ast);
-	//std::cout << '\n';
+	if (!ast.getRoot())
+		std::cout << "No Root\n";
+	else
+		PrintAST(ast, &sources);
+	std::cout << '\n';
 
 	timer.begin();
-	Frertex::Compiler compiler { preprocessor.getIncludeFilenames() };
+	Frertex::Compiler compiler { &sources };
 	auto              fil = compiler.compile(std::move(ast));
 	timer.end();
 	times << timer.formatTime("Compiler");
 
 	if (!compiler.getMessages().empty())
 	{
-		auto& includedFilenames = compiler.getIncludedFilenames();
-
 		for (auto& message : compiler.getMessages())
 		{
 			std::string output = Frertex::FormatMessage(
 			    message,
-			    includedFilenames,
-			    [](std::string_view filename, Frertex::SourcePoint line, [[maybe_unused]] void* userData) -> std::string
-			    {
-				    auto result = ReadIncludedFile(filename);
-				    if (result.m_Status == Frertex::EIncludeStatus::Failure)
-					    return {};
-				    std::size_t lineStart = line.m_Index;
-				    while (lineStart > 0 && result.m_Source[lineStart - 1] != '\n')
-					    --lineStart;
-				    std::size_t lineEnd = line.m_Index;
-				    while (lineEnd < result.m_Source.size() && result.m_Source[lineEnd] != '\n')
-					    ++lineEnd;
-				    return result.m_Source.substr(lineStart, lineEnd - lineStart);
-			    });
+			    &ReadFileLine,
+			    &sources);
 			switch (message.m_Type)
 			{
 			case Frertex::EMessageType::Warning:
@@ -401,13 +382,13 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 #if BUILD_IS_SYSTEM_WINDOWS
 			SetConsoleOutputCP(defaultCP);
 #endif
-			return 2;
+			return 3;
 		}
 	}
 	Frertex::WriteFILToFile("Output.fil", fil);
 
 	timer.begin();
-	Frertex::Transpilers::SPIRV::SPIRVTranspiler transpiler {};
+	Frertex::Transpilers::SPIRV::SPIRVTranspiler transpiler { &sources };
 
 	auto spirv = transpiler.transpile(std::move(fil));
 	timer.end();
@@ -415,26 +396,12 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 
 	if (!transpiler.getMessages().empty())
 	{
-		auto& includedFilenames = compiler.getIncludedFilenames();
-
 		for (auto& message : transpiler.getMessages())
 		{
 			std::string output = Frertex::FormatMessage(
 			    message,
-			    includedFilenames,
-			    [](std::string_view filename, Frertex::SourcePoint line, [[maybe_unused]] void* userData) -> std::string
-			    {
-				    auto result = ReadIncludedFile(filename);
-				    if (result.m_Status == Frertex::EIncludeStatus::Failure)
-					    return {};
-				    std::size_t lineStart = line.m_Index;
-				    while (lineStart > 0 && result.m_Source[lineStart - 1] != '\n')
-					    --lineStart;
-				    std::size_t lineEnd = line.m_Index;
-				    while (lineEnd < result.m_Source.size() && result.m_Source[lineEnd] != '\n')
-					    ++lineEnd;
-				    return result.m_Source.substr(lineStart, lineEnd - lineStart);
-			    });
+			    &ReadFileLine,
+			    &sources);
 			switch (message.m_Type)
 			{
 			case Frertex::EMessageType::Warning:
@@ -451,7 +418,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 #if BUILD_IS_SYSTEM_WINDOWS
 			SetConsoleOutputCP(defaultCP);
 #endif
-			return 2;
+			return 4;
 		}
 	}
 	Frertex::Transpilers::SPIRV::WriteSPIRVToFile("Output.spv", spirv);

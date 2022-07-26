@@ -8,8 +8,8 @@
 
 namespace Frertex
 {
-	Compiler::Compiler(Utils::CopyMovable<std::vector<std::string>>&& includedFilenames)
-	    : m_IncludedFilenames(includedFilenames.get()) {}
+	Compiler::Compiler(Sources* sources)
+	    : m_Sources(sources) {}
 
 	FIL Compiler::compile(Utils::CopyMovable<AST>&& ast)
 	{
@@ -42,27 +42,25 @@ namespace Frertex
 		}
 
 		// Link
-		std::set<std::uint64_t> usedFilenames;
+		std::set<std::uint32_t> usedSourceIDs;
 		for (auto& function : m_FunctionDeclarations)
-			for (auto& line : function.m_Lines)
-				usedFilenames.insert(line.m_File);
-
-		std::unordered_map<std::uint64_t, std::pair<std::uint64_t, std::uint64_t>> filenameLUT;
-		for (auto& file : usedFilenames)
 		{
-			if (file > m_IncludedFilenames.size())
+			for (auto& line : function.m_Lines)
 			{
-				filenameLUT.insert({ file, { 0, 0 } });
+				usedSourceIDs.insert(line.m_FileID);
+				usedSourceIDs.insert(line.m_SourceID);
 			}
-			else
-			{
-				auto& filename = m_IncludedFilenames[file];
+		}
 
-				std::uint64_t start  = static_cast<std::uint64_t>(fil.m_Strings.size());
-				std::uint64_t length = static_cast<std::uint64_t>(filename.size());
-				fil.m_Strings.insert(fil.m_Strings.end(), filename.begin(), filename.end());
-				filenameLUT.insert({ file, { start, length } });
-			}
+		std::unordered_map<std::uint32_t, std::pair<std::uint64_t, std::uint64_t>> filenameLUT;
+		for (auto id : usedSourceIDs)
+		{
+			auto name = m_Sources->getSourceName(id);
+
+			std::uint64_t start  = static_cast<std::uint64_t>(fil.m_Strings.size());
+			std::uint64_t length = static_cast<std::uint64_t>(name.size());
+			fil.m_Strings.insert(fil.m_Strings.end(), name.begin(), name.end());
+			filenameLUT.insert({ id, { start, length } });
 		}
 
 		struct LabelLUT
@@ -117,7 +115,7 @@ namespace Frertex
 						addError({}, {}, "User defined types not supported yet!!!");
 						continue;
 					}
-					inputs.emplace_back(static_cast<std::uint64_t>(typeID));
+					inputs.emplace_back(parameter.m_Location, static_cast<std::uint64_t>(typeID));
 				}
 				else if (qualifier == ETypeQualifier::Out)
 				{
@@ -127,7 +125,7 @@ namespace Frertex
 						addError({}, {}, "User defined types not supported yet!!!");
 						continue;
 					}
-					outputs.emplace_back(static_cast<std::uint64_t>(typeID));
+					outputs.emplace_back(parameter.m_Location, static_cast<std::uint64_t>(typeID));
 				}
 				else
 				{
@@ -174,7 +172,7 @@ namespace Frertex
 
 			for (auto& line : function.m_Lines)
 			{
-				auto lut = filenameLUT[line.m_File];
+				auto lut = filenameLUT[line.m_FileID];
 				fil.m_Lines.emplace_back(codeStart + line.m_CodeOffset, line.m_Line, lut.first, lut.second);
 			}
 
@@ -199,18 +197,28 @@ namespace Frertex
 		return fil;
 	}
 
-	void Compiler::addWarning(SourceSpan span, SourcePoint point, Utils::CopyMovable<std::string>&& message)
+	void Compiler::addWarning(std::uint32_t fileID, std::uint32_t sourceID, std::size_t index, std::size_t length, std::size_t point, Utils::CopyMovable<std::string>&& message)
 	{
 		PROFILE_FUNC;
 
-		m_Messages.emplace_back(EMessageType::Warning, span, point, message.get());
+		auto span             = m_Sources->getSpan(index, length, sourceID);
+		auto pt               = m_Sources->getPoint(point, sourceID);
+		span.m_Start.m_FileID = fileID;
+		span.m_End.m_FileID   = fileID;
+		pt.m_FileID           = fileID;
+		m_Messages.emplace_back(EMessageType::Warning, span, pt, message.get());
 	}
 
-	void Compiler::addError(SourceSpan span, SourcePoint point, Utils::CopyMovable<std::string>&& message)
+	void Compiler::addError(std::uint32_t fileID, std::uint32_t sourceID, std::size_t index, std::size_t length, std::size_t point, Utils::CopyMovable<std::string>&& message)
 	{
 		PROFILE_FUNC;
 
-		m_Messages.emplace_back(EMessageType::Error, span, point, message.get());
+		auto span             = m_Sources->getSpan(index, length, sourceID);
+		auto pt               = m_Sources->getPoint(point, sourceID);
+		span.m_Start.m_FileID = fileID;
+		span.m_End.m_FileID   = fileID;
+		pt.m_FileID           = fileID;
+		m_Messages.emplace_back(EMessageType::Error, span, pt, message.get());
 	}
 
 	void Compiler::getFunctionDefinitions(ASTNode& root, const std::string& prefix)
@@ -234,7 +242,7 @@ namespace Frertex
 				for (auto& attribute : attributes.getChildren())
 				{
 					auto& identifier = *attribute.getChild(0);
-					auto& str        = identifier.getToken().m_Str;
+					auto  str        = identifier.getToken().getView(*m_Sources);
 					if (type == EEntrypointType::None)
 					{
 						if (str == "VertexShader")
@@ -266,15 +274,15 @@ namespace Frertex
 						else if (str == "NVMeshShader")
 							type = EEntrypointType::NVMeshShader;
 						else
-							addWarning(identifier.getToken().m_Span, identifier.getToken().m_Span.m_Start, "Attribute unused");
+							addWarning(identifier.getToken(), identifier.getToken().m_Index, "Attribute unused");
 					}
 					else
 					{
-						addWarning(identifier.getToken().m_Span, identifier.getToken().m_Span.m_Start, "Attribute unused");
+						addWarning(identifier.getToken(), identifier.getToken().m_Index, "Attribute unused");
 					}
 				}
 
-				auto& function = m_FunctionDefinitions.emplace_back(prefix + declaration.getChild(2)->getToken().m_Str, type);
+				auto& function = m_FunctionDefinitions.emplace_back(prefix + std::string { declaration.getChild(2)->getToken().getView(*m_Sources) }, type);
 				getFunctionDefinitions(*declaration.getChild(4), function.m_Name + "::");
 				break;
 			}
@@ -282,6 +290,296 @@ namespace Frertex
 				break;
 			}
 		}
+	}
+
+	IntegerLiteral Compiler::getIntegerLiteral(ASTNode& node)
+	{
+		PROFILE_FUNC;
+
+		if (node.getType() != EASTNodeType::IntegerLiteral)
+		{
+			addError(node.getToken(), node.getToken().m_Index, "Unexpected integer literal");
+			return 0U;
+		}
+
+		IntegerLiteral literal  = 0U;
+		bool           negative = false;
+		std::size_t    radix    = 10;
+
+		auto&       token     = node.getToken();
+		auto        str       = token.getView(*m_Sources);
+		std::size_t offset    = 0;
+		std::size_t end       = str.size();
+		std::size_t maxDigits = 0;
+
+		switch (token.m_Class)
+		{
+		case ETokenClass::Integer:
+			if (str[0] == '-')
+			{
+				negative = true;
+				++offset;
+			}
+			else if (str[0] == '+')
+			{
+				++offset;
+			}
+			break;
+		case ETokenClass::BinaryInteger:
+			if (str[0] != '0' ||
+			    (str[1] != 'b' && str[1] != 'B'))
+			{
+				addError(token, token.m_Index, "Expected binary literal to start with '0b' or '0B'");
+				return 0U;
+			}
+
+			literal.m_Unsigned = true;
+			radix              = 2;
+			offset += 2;
+			break;
+		case ETokenClass::OctalInteger:
+			if (str[0] != '0' ||
+			    (str[1] != 'o' && str[1] != 'O'))
+			{
+				addError(token, token.m_Index, "Expected octal literal to start with '0o' or '0O'");
+				return 0U;
+			}
+
+			literal.m_Unsigned = true;
+			radix              = 8;
+			offset += 2;
+			break;
+		case ETokenClass::HexInteger:
+			if (str[0] != '0' ||
+			    (str[1] != 'x' && str[1] != 'X'))
+			{
+				addError(token, token.m_Index, "Expected hex literal to start with '0x' or '0X'");
+				return 0U;
+			}
+
+			literal.m_Unsigned = true;
+			radix              = 16;
+			offset += 2;
+			break;
+		}
+
+		while (end > offset && std::isdigit(str[end - 1]))
+		{
+			switch (str[end - 1])
+			{
+			case 'u':
+			case 'U':
+				if (literal.m_Unsigned)
+				{
+					std::size_t point = token.m_Index + end - 1;
+					addError(token, point, "Integer literal should not contain 'u' or 'U' multiple times");
+					return 0U;
+				}
+
+				literal.m_Unsigned = true;
+				break;
+			case 's':
+			case 'S':
+				if (literal.m_Size != EIntegerLiteralSize::Int)
+				{
+					std::size_t point = token.m_Index + end - 1;
+					addError(token, point, "Integer literal should not contain sized suffixes multiple times");
+					return 0U;
+				}
+
+				literal.m_Size = EIntegerLiteralSize::Short;
+				break;
+			case 'l':
+			case 'L':
+				if (literal.m_Size != EIntegerLiteralSize::Int)
+				{
+					std::size_t point = token.m_Index + end - 1;
+					addError(token, point, "Integer literal should not contain sized suffixes multiple times");
+					return 0U;
+				}
+
+				literal.m_Size = EIntegerLiteralSize::Long;
+				break;
+			default:
+			{
+				std::size_t point = token.m_Index + end - 1;
+				addError(token, point, "Integer literal suffix unrecognized");
+			}
+			}
+
+			--end;
+		}
+
+		switch (literal.m_Size)
+		{
+		case EIntegerLiteralSize::Byte:
+			switch (radix)
+			{
+			case 2:
+				maxDigits = 8;
+				break;
+			case 8:
+				maxDigits = 3;
+				break;
+			case 10:
+				maxDigits = 3;
+				break;
+			case 16:
+				maxDigits = 2;
+				break;
+			}
+			break;
+		case EIntegerLiteralSize::Short:
+			switch (radix)
+			{
+			case 2:
+				maxDigits = 16;
+				break;
+			case 8:
+				maxDigits = 6;
+				break;
+			case 10:
+				maxDigits = 5;
+				break;
+			case 16:
+				maxDigits = 4;
+				break;
+			}
+			break;
+		case EIntegerLiteralSize::Int:
+			switch (radix)
+			{
+			case 2:
+				maxDigits = 32;
+				break;
+			case 8:
+				maxDigits = 11;
+				break;
+			case 10:
+				maxDigits = 10;
+				break;
+			case 16:
+				maxDigits = 8;
+				break;
+			}
+			break;
+		case EIntegerLiteralSize::Long:
+			switch (radix)
+			{
+			case 2:
+				maxDigits = 64;
+				break;
+			case 8:
+				maxDigits = 3;
+				break;
+			case 10: // 18,446,744,073,709,551,616
+				maxDigits = negative ? 19 : 20;
+				break;
+			case 16:
+				maxDigits = 16;
+				break;
+			}
+			break;
+		}
+
+		if (end - offset > maxDigits)
+		{
+			std::size_t point = token.m_Index + offset + maxDigits;
+			addError(token, point, "Integer literal contains too many digits");
+			return 0U;
+		}
+
+		std::uint64_t value = 0;
+
+		std::size_t digit = 0;
+		for (; offset < end; ++offset)
+		{
+			if (digit > maxDigits)
+			{
+				std::size_t point = token.m_Index + offset;
+				addError(token, point, "Integer literal contains too many digits");
+				return 0U;
+			}
+
+			value *= radix;
+			std::uint8_t d = 0;
+			char         c = str[offset];
+			if (c >= '0' && c <= '9')
+			{
+				d = c - '0';
+			}
+			else if (d >= 'A' && c <= 'F')
+			{
+				d = c - 'A' + 10;
+			}
+			else if (d >= 'a' && c <= 'f')
+			{
+				d = c - 'a' + 10;
+			}
+			else
+			{
+				std::size_t point = token.m_Index + offset;
+				addError(token, point, "Integer literal contains unrecognized digit");
+				return 0U;
+			}
+
+			switch (radix)
+			{
+			case 2:
+				if (d > 1)
+				{
+					std::size_t point = token.m_Index + offset;
+					addError(token, point, "Integer literal contains digit outside current radix 2");
+					return 0U;
+				}
+				break;
+			case 8:
+				if (d > 7)
+				{
+					std::size_t point = token.m_Index + offset;
+					addError(token, point, "Integer literal contains digit outside current radix 8");
+					return 0U;
+				}
+				break;
+			case 10:
+				if (d > 10)
+				{
+					std::size_t point = token.m_Index + offset;
+					addError(token, point, "Integer literal contains digit outside current radix 10");
+					return 0U;
+				}
+				break;
+			}
+			++digit;
+		}
+
+		if (negative)
+			value = ~value + 1;
+
+		switch (literal.m_Size)
+		{
+		case EIntegerLiteralSize::Byte:
+			literal.m_Byte = static_cast<std::uint8_t>(value);
+			break;
+		case EIntegerLiteralSize::Short:
+			literal.m_Short = static_cast<std::uint16_t>(value);
+			break;
+		case EIntegerLiteralSize::Int:
+			literal.m_Int = static_cast<std::uint32_t>(value);
+			break;
+		case EIntegerLiteralSize::Long:
+			literal.m_Long = static_cast<std::uint64_t>(value);
+			break;
+		}
+
+		return literal;
+	}
+
+	FloatLiteral Compiler::getFloatLiteral([[maybe_unused]] ASTNode& node)
+	{
+		PROFILE_FUNC;
+
+		return 0.0f;
 	}
 
 	void Compiler::compileFunctionDeclaration(ASTNode& node, const std::string& prefix)
@@ -297,7 +595,7 @@ namespace Frertex
 			for (auto& attribute : attributes.getChildren())
 			{
 				auto& identifier = *attribute.getChild(0);
-				auto& str        = identifier.getToken().m_Str;
+				auto  str        = identifier.getToken().getView(*m_Sources);
 				if (type == EEntrypointType::None)
 				{
 					if (str == "VertexShader")
@@ -333,16 +631,19 @@ namespace Frertex
 		}
 
 		{
-			auto& arguments = *node.getChild(3);
+			std::uint64_t currentLocation = 0;
+			auto&         arguments       = *node.getChild(3);
 			for (auto& argument : arguments.getChildren())
 			{
-				auto& parameter = parameters.emplace_back(std::vector<ETypeQualifier> {}, 0, "");
+				auto& parameter = parameters.emplace_back(std::vector<ETypeQualifier> {}, 0, "", currentLocation++);
+
+				bool givenLocation = false;
 
 				auto& attributes = *argument.getChild(0);
 				for (auto& attribute : attributes.getChildren())
 				{
 					auto& identifier = *attribute.getChild(0);
-					auto& str        = identifier.getToken().m_Str;
+					auto  str        = identifier.getToken().getView(*m_Sources);
 					if (!parameter.m_BuiltinTypeID)
 					{
 						if (str == "Position")
@@ -350,13 +651,20 @@ namespace Frertex
 						else if (str == "PointSize")
 							parameter.m_BuiltinTypeID = static_cast<std::uint32_t>(ETypeIDs::BuiltinPointSize);
 					}
+					else if (!givenLocation && str == "Location")
+					{
+						auto&          value   = *attribute.getChild(1);
+						IntegerLiteral literal = getIntegerLiteral(value);
+						currentLocation        = (parameter.m_Location = literal.getULong()) + 1;
+						givenLocation          = true;
+					}
 				}
 
 				auto& typeName       = *argument.getChild(1);
 				auto& typeQualifiers = *typeName.getChild(0);
 				for (auto& typeQualifier : typeQualifiers.getChildren())
 				{
-					auto& str = typeQualifier.getToken().m_Str;
+					auto str = typeQualifier.getToken().getView(*m_Sources);
 					if (str == "in")
 						parameter.m_Qualifiers.emplace_back(ETypeQualifier::In);
 					else if (str == "out")
@@ -365,7 +673,7 @@ namespace Frertex
 						parameter.m_Qualifiers.emplace_back(ETypeQualifier::InOut);
 				}
 
-				parameter.m_Typename = typeName.getChild(1)->getToken().m_Str;
+				parameter.m_Typename = typeName.getChild(1)->getToken().getView(*m_Sources);
 				if (parameter.m_BuiltinTypeID)
 				{
 					auto builtinTypeID = getBuiltinTypeID(parameter.m_Typename);
@@ -374,13 +682,15 @@ namespace Frertex
 					case static_cast<std::uint32_t>(ETypeIDs::BuiltinPosition):
 						if (builtinTypeID != ETypeIDs::Float4)
 						{
-							addError(typeName.getChild(1)->getToken().m_Span, typeName.getChild(1)->getToken().m_Span.m_Start, "[[Position]] attribute requires an 'out float4' type parameter");
+							auto& typenameToken = typeName.getChild(1)->getToken();
+							addError(typenameToken, typenameToken.m_Index, "[[Position]] attribute requires an 'out float4' type parameter");
 						}
 						break;
 					case static_cast<std::uint32_t>(ETypeIDs::BuiltinPointSize):
 						if (builtinTypeID != ETypeIDs::Float)
 						{
-							addError(typeName.getChild(1)->getToken().m_Span, typeName.getChild(1)->getToken().m_Span.m_Start, "[[PointSize]] attribute requires an 'out float' type parameter");
+							auto& typenameToken = typeName.getChild(1)->getToken();
+							addError(typenameToken, typenameToken.m_Index, "[[PointSize]] attribute requires an 'out float' type parameter");
 						}
 						break;
 					}
@@ -388,7 +698,7 @@ namespace Frertex
 			}
 		}
 
-		std::string name = prefix + node.getChild(2)->getToken().m_Str;
+		std::string name = prefix + std::string { node.getChild(2)->getToken().getView(*m_Sources) };
 		CodeBuffer  code;
 		compileStatements(*node.getChild(4), code, name + "::");
 		m_FunctionDeclarations.emplace_back(std::move(name), type, std::move(parameters), code.getLabels(), code.getLabelRefs(), code.getCode(), code.getLines());
@@ -400,7 +710,7 @@ namespace Frertex
 
 		// TODO(MarcasRealAccount): Implement assignment expressions
 
-		addWarning(node.getToken().m_Span, node.getToken().m_Span.m_Start, "How compile assignment expression???");
+		addWarning(node.getToken(), node.getToken().m_Index, "How compile assignment expression???");
 	}
 
 	void Compiler::compileExpression(ASTNode& node, CodeBuffer& buffer)
@@ -413,7 +723,7 @@ namespace Frertex
 			compileAssignmentExpression(node, buffer);
 			break;
 		default:
-			addError(node.getToken().m_Span, node.getToken().m_Span.m_Start, "Unexpected expression");
+			addError(node.getToken(), node.getToken().m_Index, "Unexpected expression");
 			break;
 		}
 	}
@@ -436,7 +746,7 @@ namespace Frertex
 				compileFunctionDeclaration(*statement.getChild(4), prefix);
 				break;
 			default:
-				addError(statement.getToken().m_Span, statement.getToken().m_Span.m_Start, "Unexpected statement");
+				addError(statement.getToken(), statement.getToken().m_Index, "Unexpected statement");
 				break;
 			}
 		}

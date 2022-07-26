@@ -16,11 +16,11 @@ namespace Frertex
 		}
 	}
 
-	std::string FormatMessage(const Message& message, const std::vector<std::string>& filenames, LineCallback lineCallback, void* userData)
+	std::string FormatMessage(const Message& message, LineCallback lineCallback, Sources* sources, void* userData)
 	{
-		std::string_view filename       = filenames[message.m_Span.m_Start.m_File];
-		std::string_view actualFilename = filenames[message.m_Span.m_Start.m_ActualFile];
-		std::string      line           = lineCallback(actualFilename, message.m_Point, userData);
+		std::string_view fileName   = sources->getSourceName(message.m_Span.m_Start.m_FileID);
+		std::string_view sourceName = sources->getSourceName(message.m_Span.m_Start.m_SourceID);
+		std::string      line       = lineCallback(sourceName, message.m_Point, sources, userData);
 
 		std::size_t offset = 0;
 		while (offset < line.size())
@@ -32,9 +32,9 @@ namespace Frertex
 			offset += 4;
 		}
 
-		if (message.m_Span.m_Start.m_ActualFile != message.m_Span.m_End.m_ActualFile)
+		if (message.m_Span.m_Start.m_SourceID != message.m_Span.m_End.m_SourceID)
 			return fmt::format("{} {}:{} {}: {}\n{}\n{}^\nMultifile messages not supported, and never will, sorry :)",
-			                   filename,
+			                   fileName,
 			                   message.m_Point.m_Line + 1,
 			                   message.m_Point.m_Column + 1,
 			                   MessageTypeToString(message.m_Type),
@@ -45,7 +45,7 @@ namespace Frertex
 		if (message.m_Span.m_Start.m_Line == message.m_Span.m_End.m_Line)
 		{
 			return fmt::format("{} {}:{} {}: {}\n{}\n{}{}^{}",
-			                   filename,
+			                   fileName,
 			                   message.m_Point.m_Line + 1,
 			                   message.m_Point.m_Column + 1,
 			                   MessageTypeToString(message.m_Type),
@@ -73,7 +73,7 @@ namespace Frertex
 			else
 				squigglesEnd = line.size() - message.m_Point.m_Column - 1;
 			return fmt::format("{} {}:{} -> {}:{} {}: {}\n{}\n{}{}^{}\nMultiline messages not supported atm, sorry :)",
-			                   filename,
+			                   fileName,
 			                   message.m_Span.m_Start.m_Line + 1,
 			                   message.m_Span.m_Start.m_Column + 1,
 			                   message.m_Span.m_End.m_Line + 1,

@@ -39,6 +39,8 @@ namespace Frertex::Transpilers::SPIRV
 
 		void pushOpVariable(std::uint32_t resultType, std::uint32_t result, EStorageClass storageClass, std::uint32_t initializer = 0);
 
+		void pushOpDecorate(std::uint32_t target, EDecoration decoration, const std::vector<std::uint32_t>& literals = {});
+
 		void pushOpLabel(std::uint32_t result);
 		void pushOpReturn();
 		void pushOpReturnValue(std::uint32_t value);

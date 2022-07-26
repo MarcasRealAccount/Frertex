@@ -1,549 +1,104 @@
 #include "Frertex/Tokenizer.h"
 #include "Frertex/Utils/Profiler.h"
 
+#include <iostream>
 #include <sstream>
 
 namespace Frertex
 {
-	static ECharacterClass s_CharacterClasses[256] = {
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Tab,
-		ECharacterClass::Newline,
-		ECharacterClass::Whitespace,
-		ECharacterClass::Whitespace,
-		ECharacterClass::Whitespace,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Whitespace,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Digit,
-		ECharacterClass::Digit,
-		ECharacterClass::Digit,
-		ECharacterClass::Digit,
-		ECharacterClass::Digit,
-		ECharacterClass::Digit,
-		ECharacterClass::Digit,
-		ECharacterClass::Digit,
-		ECharacterClass::Digit,
-		ECharacterClass::Digit,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::NonDigit,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Symbol,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-		ECharacterClass::Unknown,
-	};
-
-	std::vector<Token> Tokenize(std::string_view str, SourcePoint start)
+	std::vector<Token> Tokenize(const Source* source, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
+		if (!source || end <= start)
+			return {};
+
+		auto  id  = source->getID();
+		auto& str = source->getStr();
+		end       = std::min(end, str.size());
+
 		std::vector<Token> tokens;
 
-		std::size_t     tokenLength       = 0;
-		SourcePoint     tokenStart        = start;
-		SourcePoint     tokenEnd          = start;
-		SourcePoint     current           = start;
-		ECharacterClass currentClass      = ECharacterClass::Unknown;
-		ETokenClass     tokenClass        = ETokenClass::Unknown;
-		bool            escaped           = false;
-		bool            stringEnded       = false;
-		std::size_t     multilineCommentI = 0;
-		while (current.m_Index < (str.size() + start.m_Index))
+		std::size_t current            = start;
+		ETokenClass tokenClass         = ETokenClass::Unknown;
+		ETokenClass previousTokenClass = tokenClass;
+
+		std::size_t tokenLength       = 0;
+		std::size_t tokenStart        = start;
+		std::size_t tokenEnd          = start;
+		bool        escaped           = false;
+		std::size_t multilineCommentI = 0;
+		bool        firstColumn       = true;
+
+		char c              = str[start];
+		auto characterClass = s_CharacterClasses[c];
+		while (current < end)
 		{
-			char c = str[current.m_Index - start.m_Index];
+			bool extraState = false;
+			switch (tokenClass)
+			{
+			case ETokenClass::Unknown:
+				extraState  = firstColumn;
+				tokenStart  = current;
+				tokenEnd    = current;
+				tokenLength = 0;
+				break;
+			case ETokenClass::String:
+			case ETokenClass::Preprocessor:
+				extraState = escaped;
+				break;
+			case ETokenClass::Comment:
+				extraState = tokenLength == 1;
+				break;
+			case ETokenClass::MultilineComment:
+				extraState = multilineCommentI == 0;
+				break;
+			}
 
-			auto characterClass = s_CharacterClasses[c];
-			bool addToken       = characterClass != currentClass || currentClass == ECharacterClass::Symbol;
-			currentClass        = characterClass;
-			if (tokenClass == ETokenClass::Identifier)
+			auto contextualLookup = s_ContextualTokenLUT[static_cast<std::uint32_t>(tokenClass)][c & 0b0111'1111 | extraState << 7];
+
+			if (tokenClass == ETokenClass::Comment && contextualLookup.m_NewTokenClass == ETokenClass::MultilineComment)
+				multilineCommentI = 1;
+			if (tokenClass == ETokenClass::MultilineComment && contextualLookup.m_State & 0b1000)
+				--multilineCommentI;
+
+			escaped            = contextualLookup.m_State & 0b1000'0000;
+			previousTokenClass = tokenClass;
+			tokenClass         = contextualLookup.m_NewTokenClass;
+
+			bool addToToken = contextualLookup.m_State & 1;
+
+			if (contextualLookup.m_State & 0b111)
 			{
-				if (characterClass == ECharacterClass::Digit ||
-				    (characterClass == ECharacterClass::Symbol && c == '_'))
-					addToken = false;
-			}
-			else if (tokenClass == ETokenClass::String)
-			{
-				if (!stringEnded)
+				firstColumn = false;
+				tokenEnd    = current;
+				++current;
+				if (characterClass == ECharacterClass::Newline)
+					firstColumn = true;
+				if (tokenClass != ETokenClass::Unknown)
+					++tokenLength;
+				if (current < end)
 				{
-					if (characterClass == ECharacterClass::Symbol)
-					{
-						switch (c)
-						{
-						case '\\':
-							escaped = true;
-							break;
-						case '"':
-							if (!escaped)
-								stringEnded = true;
-							addToken = false;
-							escaped  = false;
-							break;
-						default:
-							addToken = false;
-							escaped  = false;
-							break;
-						}
-					}
-					else if (characterClass == ECharacterClass::Newline)
-					{
-						if (escaped)
-							addToken = false;
-						escaped = false;
-					}
-					else
-					{
-						addToken = false;
-						escaped  = false;
-					}
-				}
-			}
-			else if (tokenClass == ETokenClass::Integer)
-			{
-				if (characterClass == ECharacterClass::Symbol && c == '.')
-				{
-					tokenClass = ETokenClass::Float;
-					addToken   = false;
-				}
-				else if (characterClass == ECharacterClass::NonDigit)
-				{
-					switch (c)
-					{
-					case 'b':
-						tokenClass = ETokenClass::BinaryInteger;
-						addToken   = false;
-						break;
-					case 'o':
-						tokenClass = ETokenClass::OctalInteger;
-						addToken   = false;
-						break;
-					case 'x':
-						tokenClass = ETokenClass::HexInteger;
-						addToken   = false;
-						break;
-					case 'e':
-					case 'E':
-						tokenClass = ETokenClass::Float;
-						addToken   = false;
-						break;
-					}
-				}
-			}
-			else if (tokenClass == ETokenClass::HexInteger)
-			{
-				if (characterClass == ECharacterClass::Symbol && c == '.')
-				{
-					tokenClass = ETokenClass::HexFloat;
-					addToken   = false;
-				}
-				else if (characterClass == ECharacterClass::NonDigit)
-				{
-					switch (c)
-					{
-					case 'a':
-					case 'b':
-					case 'c':
-					case 'd':
-					case 'e':
-					case 'f':
-					case 'A':
-					case 'B':
-					case 'C':
-					case 'D':
-					case 'E':
-					case 'F':
-						addToken = false;
-						break;
-					case 'p':
-					case 'P':
-						tokenClass = ETokenClass::HexFloat;
-						addToken   = false;
-						break;
-					}
-				}
-			}
-			else if (tokenClass == ETokenClass::Float)
-			{
-				if (characterClass == ECharacterClass::Digit)
-				{
-					addToken = false;
-				}
-				else if (characterClass == ECharacterClass::NonDigit)
-				{
-					switch (c)
-					{
-					case 'h':
-					case 'H':
-					case 'f':
-					case 'F':
-					case 'd':
-					case 'D':
-						addToken = false;
-						break;
-					}
-				}
-			}
-			else if (tokenClass == ETokenClass::HexFloat)
-			{
-				if (characterClass == ECharacterClass::Digit)
-				{
-					addToken = false;
-				}
-				else if (characterClass == ECharacterClass::NonDigit)
-				{
-					switch (c)
-					{
-					case 'a':
-					case 'b':
-					case 'c':
-					case 'd':
-					case 'e':
-					case 'f':
-					case 'h':
-					case 'A':
-					case 'B':
-					case 'C':
-					case 'D':
-					case 'E':
-					case 'F':
-					case 'H':
-						addToken = false;
-						break;
-					}
-				}
-			}
-			else if (tokenClass == ETokenClass::Preprocessor)
-			{
-				if (characterClass != ECharacterClass::Newline)
-					addToken = false;
-			}
-			else if (tokenClass == ETokenClass::Comment)
-			{
-				if (tokenLength == 1 && characterClass == ECharacterClass::Symbol && c == '*')
-				{
-					tokenClass        = ETokenClass::MultilineComment;
-					multilineCommentI = 2;
-					addToken          = false;
-				}
-				else if (characterClass != ECharacterClass::Newline)
-				{
-					addToken = false;
-				}
-			}
-			else if (tokenClass == ETokenClass::MultilineComment)
-			{
-				addToken = false;
-				switch (multilineCommentI)
-				{
-				case 0:
-					addToken = true;
-					break;
-				case 1:
-					if (characterClass == ECharacterClass::Symbol && c == '/')
-						--multilineCommentI;
-					break;
-				case 2:
-					if (characterClass == ECharacterClass::Symbol && c == '*')
-						--multilineCommentI;
-					break;
+					c              = str[current];
+					characterClass = s_CharacterClasses[c];
 				}
 			}
 
-			if (addToken)
+			if ((!addToToken || contextualLookup.m_State & 0b100) && tokenLength)
 			{
-				if (tokenLength > 0)
-				{
-					if (tokenClass == ETokenClass::String)
-					{
-						++tokenStart.m_Index;
-						++tokenStart.m_Column;
-						--tokenEnd.m_Index;
-						--tokenEnd.m_Column;
-					}
-					tokens.emplace_back(tokenClass, str.substr(tokenStart.m_Index - start.m_Index, 1 + tokenEnd.m_Index - tokenStart.m_Index), SourceSpan { tokenStart, tokenEnd });
-					tokenLength = 0;
-					tokenClass  = ETokenClass::Unknown;
-					stringEnded = false;
-				}
-				tokenStart = current;
-				tokenEnd   = current;
+				if (tokenClass == ETokenClass::String)
+					++tokenStart;
+				tokens.emplace_back(previousTokenClass, tokenStart, tokenEnd - tokenStart + 1, id, id);
+				tokenLength = 0;
+				tokenClass  = ETokenClass::Unknown;
 			}
-
-			if (tokenClass == ETokenClass::Unknown)
-			{
-				switch (characterClass)
-				{
-				case ECharacterClass::NonDigit:
-					tokenClass = ETokenClass::Identifier;
-					break;
-				case ECharacterClass::Digit:
-					tokenClass = ETokenClass::Integer;
-					break;
-				case ECharacterClass::Symbol:
-					tokenClass = (c == '#' && current.m_Column == 0) ? ETokenClass::Preprocessor : (c == '"' ? ETokenClass::String : (c == '/' ? ETokenClass::Comment : ETokenClass::Symbol));
-					break;
-				case ECharacterClass::Whitespace:
-				case ECharacterClass::Tab:
-				case ECharacterClass::Newline:
-					tokenClass = ETokenClass::Unknown;
-					break;
-				default:
-					break;
-				}
-			}
-
-			tokenEnd = current;
-			++current.m_Index;
-			current.m_Column += characterClass == ECharacterClass::Tab ? 4 : 1;
-			if (characterClass == ECharacterClass::Newline)
-			{
-				++current.m_Line;
-				current.m_Column = 0;
-			}
-			if (tokenClass != ETokenClass::Unknown)
-				++tokenLength;
 		}
 
-		if (tokenLength > 0)
+		if (tokenLength)
 		{
 			if (tokenClass == ETokenClass::String)
-			{
-				++tokenStart.m_Index;
-				++tokenStart.m_Column;
-				--tokenEnd.m_Index;
-				--tokenEnd.m_Column;
-			}
-			tokens.emplace_back(tokenClass, str.substr(tokenStart.m_Index - start.m_Index, 1 + tokenEnd.m_Index - tokenStart.m_Index), SourceSpan { tokenStart, tokenEnd });
+				++tokenStart;
+			tokens.emplace_back(previousTokenClass, tokenStart, tokenEnd - tokenStart + 1, id, id);
 		}
 
 		return tokens;
