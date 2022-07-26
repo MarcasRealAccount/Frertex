@@ -10,6 +10,21 @@
 
 namespace Frertex
 {
+	enum class EIncludeStatus
+	{
+		Failure = 0,
+		Success
+	};
+
+	struct IncludeData
+	{
+		EIncludeStatus m_Status;
+		std::string    m_Source;
+		std::string    m_Filename;
+	};
+
+	using IncludeHandler = IncludeData (*)(std::string_view filename, std::string_view originalFilename);
+
 	struct SourcePoint
 	{
 		std::size_t   m_Index = 0, m_Line = 0, m_Column = 0;
@@ -51,6 +66,13 @@ namespace Frertex
 	{
 	public:
 		std::uint32_t addSource(Utils::CopyMovable<std::string>&& name, Utils::CopyMovable<std::string>&& str);
+		std::uint32_t addSource(Utils::CopyMovable<IncludeData>&& data)
+		{
+			IncludeData in = data.get();
+			if (in.m_Status == EIncludeStatus::Success)
+				return addSource(std::move(in.m_Filename), std::move(in.m_Source));
+			return 0;
+		}
 
 		std::uint32_t getSourceID(std::string_view name) const;
 		Source*       getSource(std::string_view name);

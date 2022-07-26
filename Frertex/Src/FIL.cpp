@@ -6,6 +6,29 @@
 
 namespace Frertex
 {
+	std::string_view EntrypointTypeToString(EEntrypointType type)
+	{
+		switch (type)
+		{
+		case EEntrypointType::None: return "None";
+		case EEntrypointType::VertexShader: return "VertexShader";
+		case EEntrypointType::TessellationControlShader: return "TessellationControlShader";
+		case EEntrypointType::TessellationEvaluationShader: return "TessellationEvaluationShader";
+		case EEntrypointType::GeometryShader: return "GeometryShader";
+		case EEntrypointType::FragmentShader: return "FragmentShader";
+		case EEntrypointType::ComputeShader: return "ComputeShader";
+		case EEntrypointType::RTRayGenShader: return "RTRayGenShader";
+		case EEntrypointType::RTAnyHitShader: return "RTAnyHitShader";
+		case EEntrypointType::RTClosestHitShader: return "RTClosestHitShader";
+		case EEntrypointType::RTMissShader: return "RTMissShader";
+		case EEntrypointType::RTIntersectionShader: return "RTIntersectionShader";
+		case EEntrypointType::RTCallableShader: return "RTCallableShader";
+		case EEntrypointType::NVTaskShader: return "NVTaskShader";
+		case EEntrypointType::NVMeshShader: return "NVMeshShader";
+		default: return "???";
+		}
+	}
+
 	std::string TypeIDToString(ETypeIDs type)
 	{
 		if (type == ETypeIDs::Void)
@@ -80,6 +103,17 @@ namespace Frertex
 		{
 			return {};
 		}
+	}
+
+	bool TypeIDIsUserDefined(ETypeIDs type)
+	{
+		return static_cast<std::uint64_t>(type) >= 0x8000'0000'0000'0000;
+	}
+
+	bool TypeIDIsBuiltIn(ETypeIDs type)
+	{
+		return static_cast<std::uint64_t>(type) >= 0x8000'0000 &&
+		       static_cast<std::uint64_t>(type) < 0x8000'0000'0000'0000;
 	}
 
 	ETypeIDs TypeIDGetBase(ETypeIDs type)

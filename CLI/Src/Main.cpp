@@ -22,9 +22,10 @@
 #undef FormatMessage
 #endif
 
-Frertex::IncludeData ReadIncludedFile(std::string_view filename, std::string_view originalFilename)
+Frertex::IncludeData ReadIncludedFile(std::string_view filename, std::string_view originalFilename = ".")
 {
-	std::ifstream file { std::string { filename }, std::ios::ate };
+	std::filesystem::path path = std::filesystem::relative(filename, originalFilename);
+	std::ifstream         file { path, std::ios::ate };
 	if (file)
 	{
 		std::string source;
@@ -32,12 +33,12 @@ Frertex::IncludeData ReadIncludedFile(std::string_view filename, std::string_vie
 		file.seekg(0);
 		file.read(source.data(), source.size());
 		file.close();
-		return { Frertex::EIncludeStatus::Success, std::move(source) };
+		return { Frertex::EIncludeStatus::Success, std::move(source), std::filesystem::absolute(path).string() };
 	}
 	return {};
 }
 
-std::string ReadFileLine(std::string_view filename, Frertex::SourcePoint line, Frertex::Sources* sources, [[maybe_unused]] void* userData)
+std::string ReadFileLine(Frertex::SourcePoint line, Frertex::Sources* sources, [[maybe_unused]] void* userData)
 {
 	if (!sources)
 		return {};
@@ -207,7 +208,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 
 	Frertex::Sources sources;
 
-	auto mainSource = sources.addSource("Test.frer", ReadIncludedFile("Test.frer", "").m_Source);
+	auto mainSource = sources.addSource(ReadIncludedFile("Test.frer"));
 
 	timer.begin();
 	auto tokens = Frertex::Tokenize(sources.getSource(mainSource));

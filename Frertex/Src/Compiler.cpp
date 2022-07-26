@@ -109,23 +109,37 @@ namespace Frertex
 
 				if (qualifier == ETypeQualifier::In)
 				{
-					ETypeIDs typeID = getBuiltinTypeID(parameter.m_Typename);
-					if (typeID == ETypeIDs::BuiltinEnd)
+					if (parameter.m_BuiltinTypeID)
 					{
-						addError({}, {}, "User defined types not supported yet!!!");
-						continue;
+						inputs.emplace_back(0, static_cast<std::uint64_t>(parameter.m_BuiltinTypeID));
 					}
-					inputs.emplace_back(parameter.m_Location, static_cast<std::uint64_t>(typeID));
+					else
+					{
+						ETypeIDs typeID = getBuiltinTypeID(parameter.m_Typename);
+						if (typeID >= ETypeIDs::BuiltinEnd)
+						{
+							addError({}, {}, "User defined types not supported yet!!!");
+							continue;
+						}
+						inputs.emplace_back(parameter.m_Location, static_cast<std::uint64_t>(typeID));
+					}
 				}
 				else if (qualifier == ETypeQualifier::Out)
 				{
-					ETypeIDs typeID = getBuiltinTypeID(parameter.m_Typename);
-					if (typeID == ETypeIDs::BuiltinEnd)
+					if (parameter.m_BuiltinTypeID)
 					{
-						addError({}, {}, "User defined types not supported yet!!!");
-						continue;
+						outputs.emplace_back(0, static_cast<std::uint64_t>(parameter.m_BuiltinTypeID));
 					}
-					outputs.emplace_back(parameter.m_Location, static_cast<std::uint64_t>(typeID));
+					else
+					{
+						ETypeIDs typeID = getBuiltinTypeID(parameter.m_Typename);
+						if (typeID >= ETypeIDs::BuiltinEnd)
+						{
+							addError({}, {}, "User defined types not supported yet!!!");
+							continue;
+						}
+						outputs.emplace_back(parameter.m_Location, static_cast<std::uint64_t>(typeID));
+					}
 				}
 				else
 				{

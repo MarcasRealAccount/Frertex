@@ -9,20 +9,6 @@
 
 namespace Frertex
 {
-	enum class EIncludeStatus
-	{
-		Failure = 0,
-		Success
-	};
-
-	struct IncludeData
-	{
-		EIncludeStatus m_Status;
-		std::string    m_Source;
-	};
-
-	using IncludeHandler = IncludeData (*)(std::string_view filename, std::string_view originalFilename);
-
 	class Preprocessor
 	{
 	public:

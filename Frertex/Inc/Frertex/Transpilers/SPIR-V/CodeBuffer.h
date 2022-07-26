@@ -33,6 +33,17 @@ namespace Frertex::Transpilers::SPIRV
 		void pushOpTypeEvent(std::uint32_t result);
 		void pushOpTypeDeviceEvent(std::uint32_t result);
 
+		void pushOpConstantTrue(std::uint32_t resultType, std::uint32_t result);
+		void pushOpConstantFalse(std::uint32_t resultType, std::uint32_t result);
+		void pushOpConstant(std::uint32_t resultType, std::uint32_t result, const std::vector<std::uint32_t>& value);
+		void pushOpConstantComposite(std::uint32_t resultType, std::uint32_t result, const std::vector<std::uint32_t>& constituents);
+		void pushOpConstantSampler(std::uint32_t resultType, std::uint32_t result, ESamplerAddressingMode addressingMode, std::uint32_t param, ESamplerFilterMode filterMode);
+		void pushOpConstantNull(std::uint32_t resultType, std::uint32_t result);
+		void pushOpSpecConstantTrue(std::uint32_t resultType, std::uint32_t result);
+		void pushOpSpecConstantFalse(std::uint32_t resultType, std::uint32_t result);
+		void pushOpSpecConstant(std::uint32_t resultType, std::uint32_t result, const std::vector<std::uint32_t>& value);
+		void pushOpSpecConstantComposite(std::uint32_t resultType, std::uint32_t result, const std::vector<std::uint32_t>& constituents);
+
 		void pushOpFunction(std::uint32_t returnType, std::uint32_t result, EFunctionControl functionControl, std::uint32_t functionType);
 		void pushOpFunctionParameter(std::uint32_t resultType, std::uint32_t result);
 		void pushOpFunctionEnd();
@@ -40,6 +51,7 @@ namespace Frertex::Transpilers::SPIRV
 		void pushOpVariable(std::uint32_t resultType, std::uint32_t result, EStorageClass storageClass, std::uint32_t initializer = 0);
 
 		void pushOpDecorate(std::uint32_t target, EDecoration decoration, const std::vector<std::uint32_t>& literals = {});
+		void pushOpMemberDecorate(std::uint32_t structureType, std::uint32_t member, EDecoration decoration, const std::vector<std::uint32_t>& literals = {});
 
 		void pushOpLabel(std::uint32_t result);
 		void pushOpReturn();

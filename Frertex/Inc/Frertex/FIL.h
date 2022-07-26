@@ -29,6 +29,8 @@ namespace Frertex
 		NVMeshShader                 = 0x0080
 	};
 
+	std::string_view EntrypointTypeToString(EEntrypointType type);
+
 	enum class ETypeQualifier : std::uint32_t
 	{
 		None = 0,
@@ -263,6 +265,8 @@ namespace Frertex
 	};
 
 	std::string TypeIDToString(ETypeIDs type);
+	bool        TypeIDIsUserDefined(ETypeIDs type);
+	bool        TypeIDIsBuiltIn(ETypeIDs type);
 	ETypeIDs    TypeIDGetBase(ETypeIDs type);
 
 	struct FunctionDefinition

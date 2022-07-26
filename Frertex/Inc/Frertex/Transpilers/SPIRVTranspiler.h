@@ -50,6 +50,8 @@ namespace Frertex::Transpilers::SPIRV
 		std::uint32_t getOrAddBuiltinType(ETypeIDs type, SPIRV& spirv, CodeBuffer& typesCode);
 		template <CallableWith<std::pair<std::string, std::uint32_t>> F>
 		std::uint32_t getOrAddPointerType(EStorageClass storageClass, SPIRV& spirv, CodeBuffer& typesCode, F callback);
+		template <CallableWith<std::pair<std::string, std::uint32_t>> F>
+		std::uint32_t getOrAddArrayType(SPIRV& spirv, CodeBuffer& typesCode, std::uint32_t lengthID, F callback);
 		template <CallableWith<std::pair<std::string, std::uint32_t>> F, CallableWith<std::pair<std::string, std::uint32_t>>... Fs>
 		std::uint32_t getOrAddFunctionType(SPIRV& spirv, CodeBuffer& typesCode, F returnType, Fs... parameterTypes);
 		template <CallableWith<std::uint32_t> F>
@@ -107,6 +109,25 @@ namespace Frertex::Transpilers::SPIRV
 
 			    std::uint32_t resultID = spirv.m_IDBound++;
 			    typesCode.pushOpTypePointer(resultID, storageClass, pointerType.second);
+			    return resultID;
+		    });
+	}
+
+	template <CallableWith<std::pair<std::string, std::uint32_t>> F>
+	std::uint32_t SPIRVTranspiler::getOrAddArrayType(SPIRV& spirv, CodeBuffer& typesCode, std::uint32_t lengthID, F callback)
+	{
+		PROFILE_FUNC;
+
+		std::pair<std::string, std::uint32_t> elementType = callback();
+
+		return getOrAddResultID(
+		    fmt::format("_arr_{}_{}", elementType.first, lengthID),
+		    [&]() -> std::uint32_t
+		    {
+			    PROFILE_FUNC;
+
+			    std::uint32_t resultID = spirv.m_IDBound++;
+			    typesCode.pushOpTypeArray(resultID, elementType.second, lengthID);
 			    return resultID;
 		    });
 	}

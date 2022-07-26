@@ -205,11 +205,108 @@ namespace Frertex::Transpilers::SPIRV
 		m_Code.emplace_back(type);
 	}
 
+	void CodeBuffer::pushOpConstantTrue(std::uint32_t resultType, std::uint32_t result)
+	{
+		PROFILE_FUNC;
+
+		m_Code.emplace_back(0x0003'0029);
+		m_Code.emplace_back(resultType);
+		m_Code.emplace_back(result);
+	}
+
+	void CodeBuffer::pushOpConstantFalse(std::uint32_t resultType, std::uint32_t result)
+	{
+		PROFILE_FUNC;
+
+		m_Code.emplace_back(0x0003'002A);
+		m_Code.emplace_back(resultType);
+		m_Code.emplace_back(result);
+	}
+
+	void CodeBuffer::pushOpConstant(std::uint32_t resultType, std::uint32_t result, const std::vector<std::uint32_t>& value)
+	{
+		PROFILE_FUNC;
+
+		m_Code.emplace_back(static_cast<std::uint32_t>(0x0003'002B + (value.size() << 16)));
+		m_Code.emplace_back(resultType);
+		m_Code.emplace_back(result);
+		m_Code.insert(m_Code.end(), value.begin(), value.end());
+	}
+
+	void CodeBuffer::pushOpConstantComposite(std::uint32_t resultType, std::uint32_t result, const std::vector<std::uint32_t>& constituents)
+	{
+		PROFILE_FUNC;
+
+		m_Code.emplace_back(static_cast<std::uint32_t>(0x0003'002C + (constituents.size() << 16)));
+		m_Code.emplace_back(resultType);
+		m_Code.emplace_back(result);
+		m_Code.insert(m_Code.end(), constituents.begin(), constituents.end());
+	}
+
+	void CodeBuffer::pushOpConstantSampler(std::uint32_t resultType, std::uint32_t result, ESamplerAddressingMode addressingMode, std::uint32_t param, ESamplerFilterMode filterMode)
+	{
+		PROFILE_FUNC;
+
+		m_Code.emplace_back(0x0006'002D);
+		m_Code.emplace_back(resultType);
+		m_Code.emplace_back(result);
+		m_Code.emplace_back(static_cast<std::uint32_t>(addressingMode));
+		m_Code.emplace_back(param);
+		m_Code.emplace_back(static_cast<std::uint32_t>(filterMode));
+	}
+
+	void CodeBuffer::pushOpConstantNull(std::uint32_t resultType, std::uint32_t result)
+	{
+		PROFILE_FUNC;
+
+		m_Code.emplace_back(0x0003'002E);
+		m_Code.emplace_back(resultType);
+		m_Code.emplace_back(result);
+	}
+
+	void CodeBuffer::pushOpSpecConstantTrue(std::uint32_t resultType, std::uint32_t result)
+	{
+		PROFILE_FUNC;
+
+		m_Code.emplace_back(0x0003'0030);
+		m_Code.emplace_back(resultType);
+		m_Code.emplace_back(result);
+	}
+
+	void CodeBuffer::pushOpSpecConstantFalse(std::uint32_t resultType, std::uint32_t result)
+	{
+		PROFILE_FUNC;
+
+		m_Code.emplace_back(0x0003'0031);
+		m_Code.emplace_back(resultType);
+		m_Code.emplace_back(result);
+	}
+
+	void CodeBuffer::pushOpSpecConstant(std::uint32_t resultType, std::uint32_t result, const std::vector<std::uint32_t>& value)
+	{
+		PROFILE_FUNC;
+
+		m_Code.emplace_back(static_cast<std::uint32_t>(0x0003'0032 + (value.size() << 16)));
+		m_Code.emplace_back(resultType);
+		m_Code.emplace_back(result);
+		m_Code.insert(m_Code.end(), value.begin(), value.end());
+	}
+
+	void CodeBuffer::pushOpSpecConstantComposite(std::uint32_t resultType, std::uint32_t result, const std::vector<std::uint32_t>& constituents)
+	{
+		PROFILE_FUNC;
+
+		m_Code.emplace_back(static_cast<std::uint32_t>(0x0003'0033 + (constituents.size() << 16)));
+		m_Code.emplace_back(resultType);
+		m_Code.emplace_back(result);
+		m_Code.insert(m_Code.end(), constituents.begin(), constituents.end());
+	}
+
 	void CodeBuffer::pushOpTypeFunction(std::uint32_t result, std::uint32_t returnType, const std::vector<std::uint32_t>& parameterTypes)
 	{
 		PROFILE_FUNC;
 
-		m_Code.emplace_back(0x0003'0021 + (parameterTypes.size() << 16));
+		m_Code.emplace_back(static_cast<std::uint32_t>(0x0003'0021 + (parameterTypes.size() << 16)));
 		m_Code.emplace_back(result);
 		m_Code.emplace_back(returnType);
 		m_Code.insert(m_Code.end(), parameterTypes.begin(), parameterTypes.end());
@@ -276,6 +373,17 @@ namespace Frertex::Transpilers::SPIRV
 
 		m_Code.emplace_back(static_cast<std::uint32_t>(0x0003'0047 + (literals.size() << 16)));
 		m_Code.emplace_back(target);
+		m_Code.emplace_back(static_cast<std::uint32_t>(decoration));
+		m_Code.insert(m_Code.end(), literals.begin(), literals.end());
+	}
+
+	void CodeBuffer::pushOpMemberDecorate(std::uint32_t structureType, std::uint32_t member, EDecoration decoration, const std::vector<std::uint32_t>& literals)
+	{
+		PROFILE_FUNC;
+
+		m_Code.emplace_back(static_cast<std::uint32_t>(0x0004'0048 + (literals.size() << 16)));
+		m_Code.emplace_back(structureType);
+		m_Code.emplace_back(member);
 		m_Code.emplace_back(static_cast<std::uint32_t>(decoration));
 		m_Code.insert(m_Code.end(), literals.begin(), literals.end());
 	}

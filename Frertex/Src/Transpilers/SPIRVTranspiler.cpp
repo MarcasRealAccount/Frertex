@@ -102,10 +102,20 @@ namespace Frertex::Transpilers::SPIRV
 
 		struct EntrypointInfo
 		{
-			std::uint32_t              m_FunctionID;
-			std::uint32_t              m_BaseLabelID;
-			std::vector<std::uint32_t> m_InputIDs;
-			std::vector<std::uint32_t> m_OutputIDs;
+			struct ArgInfo
+			{
+				std::uint32_t m_ID;
+				bool          m_IsBuiltin = false;
+			};
+
+			std::uint32_t m_FunctionID;
+			std::uint32_t m_BaseLabelID;
+
+			std::vector<ArgInfo> m_InputIDs;
+			std::vector<ArgInfo> m_OutputIDs;
+
+			std::uint32_t m_BuiltinInputID;
+			std::uint32_t m_BuiltinOutputID;
 		};
 
 		std::vector<EntrypointInfo> entrypointInfos;
@@ -119,68 +129,202 @@ namespace Frertex::Transpilers::SPIRV
 			auto& label = input.m_Labels[entrypoint.m_LabelID];
 			auto  name  = std::string_view(reinterpret_cast<const char*>(input.m_Strings.data() + label.m_NameOffset), label.m_NameLength);
 
+			bool containsBuiltinInputs  = false;
+			bool containsBuiltinOutputs = false;
+
 			std::vector<std::uint32_t> interface;
 			interface.reserve(entrypoint.m_Inputs.size() + entrypoint.m_Outputs.size());
 			info.m_InputIDs.resize(entrypoint.m_Inputs.size());
 			for (std::size_t j = 0; j < entrypoint.m_Inputs.size(); ++j)
 			{
 				auto& param        = entrypoint.m_Inputs[j];
-				info.m_InputIDs[j] = getOrAddResultID(
-				    fmt::format("{}_in{}", name, j),
-				    [&]() -> std::uint32_t
-				    {
-					    PROFILE_FUNC;
+				info.m_InputIDs[j] = {
+					getOrAddResultID(
+					    fmt::format("{}_in{}", name, j),
+					    [&]() -> std::uint32_t
+					    {
+					        PROFILE_FUNC;
 
-					    std::uint32_t pointerType = getOrAddPointerType(
-					        EStorageClass::Input,
-					        spirv,
-					        typesCode,
-					        [&]() -> std::pair<std::string, std::uint32_t>
+					        if (TypeIDIsUserDefined(static_cast<ETypeIDs>(param.m_TypeID)))
 					        {
-						        PROFILE_FUNC;
-
 						        // TODO(MarcasRealAccount): Implement user defined types
-						        return getOrAddBuiltinTypeN(static_cast<ETypeIDs>(param.m_TypeID), spirv, typesCode);
-					        });
+						        addError(0, 0, 0, 0, 0, "SPIR-V Transpiler doesn't support user defined types yet");
+						        return 0;
+					        }
+					        else if (TypeIDIsBuiltIn(static_cast<ETypeIDs>(param.m_TypeID)))
+					        {
+						        containsBuiltinInputs = true;
+						        switch (static_cast<ETypeIDs>(param.m_TypeID))
+						        {
+						        default:
+							        addError(0, 0, 0, 0, 0, fmt::format("SPIR-V Transpiler doesn't support builtin input '{}'", TypeIDToString(static_cast<ETypeIDs>(param.m_TypeID))));
+							        return ~0U;
+						        }
+					        }
+					        else
+					        {
+						        std::uint32_t pointerType = getOrAddPointerType(
+						            EStorageClass::Input,
+						            spirv,
+						            typesCode,
+						            [&]() -> std::pair<std::string, std::uint32_t>
+						            {
+							            PROFILE_FUNC;
 
-					    std::uint32_t resultID = spirv.m_IDBound++;
-					    variablesCode.pushOpVariable(pointerType, resultID, EStorageClass::Input);
-					    decorationsCode.pushOpDecorate(resultID, EDecoration::Location, { static_cast<std::uint32_t>(param.m_Location) });
-					    return resultID;
-				    });
-				interface.emplace_back(info.m_InputIDs[j]);
+							            return getOrAddBuiltinTypeN(static_cast<ETypeIDs>(param.m_TypeID), spirv, typesCode);
+						            });
+
+						        std::uint32_t resultID = spirv.m_IDBound++;
+						        variablesCode.pushOpVariable(pointerType, resultID, EStorageClass::Input);
+						        decorationsCode.pushOpDecorate(resultID, EDecoration::Location, { static_cast<std::uint32_t>(param.m_Location) });
+						        return resultID;
+					        }
+					    }),
+					TypeIDIsBuiltIn(static_cast<ETypeIDs>(param.m_TypeID))
+				};
+				if (!info.m_InputIDs[j].m_IsBuiltin)
+					interface.emplace_back(info.m_InputIDs[j].m_ID);
 			}
 			info.m_OutputIDs.resize(entrypoint.m_Outputs.size());
 			for (std::size_t j = 0; j < entrypoint.m_Outputs.size(); ++j)
 			{
 				auto& param         = entrypoint.m_Outputs[j];
-				info.m_OutputIDs[j] = getOrAddResultID(
-				    fmt::format("{}_out{}", name, j),
-				    [&]() -> std::uint32_t
-				    {
-					    PROFILE_FUNC;
+				info.m_OutputIDs[j] = {
+					getOrAddResultID(
+					    fmt::format("{}_out{}", name, j),
+					    [&]() -> std::uint32_t
+					    {
+					        PROFILE_FUNC;
 
-					    std::uint32_t pointerType = getOrAddPointerType(
-					        EStorageClass::Output,
-					        spirv,
-					        typesCode,
-					        [&]() -> std::pair<std::string, std::uint32_t>
+					        if (TypeIDIsUserDefined(static_cast<ETypeIDs>(param.m_TypeID)))
 					        {
-						        PROFILE_FUNC;
-
 						        // TODO(MarcasRealAccount): Implement user defined types
-						        return getOrAddBuiltinTypeN(static_cast<ETypeIDs>(param.m_TypeID), spirv, typesCode);
-					        });
+						        addError(0, 0, 0, 0, 0, "SPIR-V Transpiler doesn't support user defined types yet");
+						        return 0;
+					        }
+					        else if (TypeIDIsBuiltIn(static_cast<ETypeIDs>(param.m_TypeID)))
+					        {
+						        containsBuiltinOutputs = true;
+						        switch (static_cast<ETypeIDs>(param.m_TypeID))
+						        {
+						        case ETypeIDs::BuiltinPosition: return 0;
+						        case ETypeIDs::BuiltinPointSize: return 1;
+							    //case ETypeIDs::BuiltinClipDistance: return 2;
+							    //case ETypeIDs::BuiltinCullDistance: return 3;
+						        default:
+							        addError(0, 0, 0, 0, 0, fmt::format("SPIR-V Transpiler doesn't support builtin input '{}'", TypeIDToString(static_cast<ETypeIDs>(param.m_TypeID))));
+							        return ~0U;
+						        }
+					        }
+					        else
+					        {
+						        std::uint32_t pointerType = getOrAddPointerType(
+						            EStorageClass::Output,
+						            spirv,
+						            typesCode,
+						            [&]() -> std::pair<std::string, std::uint32_t>
+						            {
+							            PROFILE_FUNC;
 
-					    std::uint32_t resultID = spirv.m_IDBound++;
-					    variablesCode.pushOpVariable(pointerType, resultID, EStorageClass::Output);
-					    decorationsCode.pushOpDecorate(resultID, EDecoration::Location, { static_cast<std::uint32_t>(param.m_Location) });
-					    return resultID;
-				    });
-				interface.emplace_back(info.m_OutputIDs[j]);
+							            return getOrAddBuiltinTypeN(static_cast<ETypeIDs>(param.m_TypeID), spirv, typesCode);
+						            });
+
+						        std::uint32_t resultID = spirv.m_IDBound++;
+						        variablesCode.pushOpVariable(pointerType, resultID, EStorageClass::Output);
+						        decorationsCode.pushOpDecorate(resultID, EDecoration::Location, { static_cast<std::uint32_t>(param.m_Location) });
+						        return resultID;
+					        }
+					    }),
+					TypeIDIsBuiltIn(static_cast<ETypeIDs>(param.m_TypeID))
+				};
+				if (!info.m_InputIDs[j].m_IsBuiltin)
+					interface.emplace_back(info.m_InputIDs[j].m_ID);
 			}
 			info.m_FunctionID  = spirv.m_IDBound++;
 			info.m_BaseLabelID = spirv.m_IDBound++;
+
+			if (containsBuiltinInputs)
+			{
+				switch (entrypoint.m_Type)
+				{
+				default:
+					containsBuiltinInputs = false;
+					addError(0, 0, 0, 0, 0, fmt::format("SPIR-V Transpiler doesn't support builtin inputs for entrypoint type '{}'", EntrypointTypeToString(entrypoint.m_Type)));
+					break;
+				}
+			}
+			if (containsBuiltinOutputs)
+			{
+				switch (entrypoint.m_Type)
+				{
+				case EEntrypointType::VertexShader:
+				{
+					info.m_BuiltinOutputID = getOrAddResultID(
+					    "_gl_PerVertex_Var",
+					    [&]() -> std::uint32_t
+					    {
+						    PROFILE_FUNC;
+
+						    std::uint32_t pointerType = getOrAddPointerType(
+						        EStorageClass::Output,
+						        spirv,
+						        typesCode,
+						        [&]() -> std::pair<std::string, std::uint32_t>
+						        {
+							        PROFILE_FUNC;
+
+							        std::uint32_t floatArrUInt_1 = getOrAddArrayType(
+							            spirv,
+							            typesCode,
+							            getOrAddResultID(
+							                "uint_1",
+							                [&]() -> std::uint32_t
+							                {
+								                PROFILE_FUNC;
+
+								                std::uint32_t elementType = getOrAddBuiltinType(ETypeIDs::UInt, spirv, typesCode);
+								                std::uint32_t resultID    = spirv.m_IDBound++;
+								                typesCode.pushOpConstant(elementType, resultID, { 1 });
+								                return resultID;
+							                }),
+							            [&]() -> std::pair<std::string, std::uint32_t>
+							            {
+								            PROFILE_FUNC;
+
+								            return getOrAddBuiltinTypeN(ETypeIDs::Float, spirv, typesCode);
+							            });
+
+							        std::vector<std::uint32_t> members {
+								        getOrAddBuiltinType(ETypeIDs::Float4, spirv, typesCode),
+								        getOrAddBuiltinType(ETypeIDs::Float, spirv, typesCode),
+								        floatArrUInt_1,
+								        floatArrUInt_1
+							        };
+
+							        std::uint32_t resultID = spirv.m_IDBound++;
+							        typesCode.pushOpTypeStruct(resultID, members);
+							        decorationsCode.pushOpMemberDecorate(resultID, 0, EDecoration::BuiltIn, { static_cast<std::uint32_t>(EBuiltIn::Position) });
+							        decorationsCode.pushOpMemberDecorate(resultID, 1, EDecoration::BuiltIn, { static_cast<std::uint32_t>(EBuiltIn::PointSize) });
+							        decorationsCode.pushOpMemberDecorate(resultID, 2, EDecoration::BuiltIn, { static_cast<std::uint32_t>(EBuiltIn::ClipDistance) });
+							        decorationsCode.pushOpMemberDecorate(resultID, 3, EDecoration::BuiltIn, { static_cast<std::uint32_t>(EBuiltIn::CullDistance) });
+							        decorationsCode.pushOpDecorate(resultID, EDecoration::Block);
+							        m_NamedResultIDs.insert({ "_gl_PerVertex", resultID });
+							        return { "_gl_PerVertex", resultID };
+						        });
+
+						    std::uint32_t resultID = spirv.m_IDBound++;
+						    variablesCode.pushOpVariable(pointerType, resultID, EStorageClass::Output);
+						    return resultID;
+					    });
+					interface.insert(interface.begin(), info.m_BuiltinOutputID);
+					break;
+				}
+				default:
+					containsBuiltinOutputs = false;
+					addError(0, 0, 0, 0, 0, fmt::format("SPIR-V Transpiler doesn't support builtin outputs for entrypoint type '{}'", EntrypointTypeToString(entrypoint.m_Type)));
+					break;
+				}
+			}
 
 			entrypointsCode.pushOpEntryPoint(executionModel, info.m_FunctionID, name, interface);
 
@@ -198,6 +342,7 @@ namespace Frertex::Transpilers::SPIRV
 				        return getOrAddBuiltinTypeN(ETypeIDs::Void, spirv, typesCode);
 			        }));
 			functionsCode.pushOpLabel(info.m_BaseLabelID);
+
 			functionsCode.pushOpReturn();
 			functionsCode.pushOpFunctionEnd();
 		}

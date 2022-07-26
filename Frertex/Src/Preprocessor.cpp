@@ -5,6 +5,7 @@
 
 #include <fmt/format.h>
 
+#include <filesystem>
 #include <unordered_map>
 
 namespace Frertex
@@ -102,14 +103,14 @@ namespace Frertex
 
 						if (!hasIncludedFile(include))
 						{
-							auto result = m_IncludeHandler(include, m_Sources->getSourceName(input.m_SourceID));
+							auto result = m_IncludeHandler(include, std::filesystem::path { m_Sources->getSourceName(input.m_SourceID) }.parent_path().string());
 							if (result.m_Status == EIncludeStatus::Failure)
 							{
 								addError(input, input.m_Index, fmt::format("File \"{}\" not found", Utils::EscapeString(include)));
 								continue;
 							}
 
-							std::uint32_t      newFileID      = m_Sources->addSource(include, std::move(result.m_Source));
+							std::uint32_t      newFileID      = m_Sources->addSource(std::move(result));
 							std::vector<Token> includedTokens = Tokenize(m_Sources->getSource(newFileID));
 
 							itr                     = output.erase(itr);

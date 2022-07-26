@@ -25,7 +25,7 @@ namespace Frertex
 		std::string  m_Message;
 	};
 
-	using LineCallback = std::string (*)(std::string_view filename, SourcePoint line, Sources* sources, void* userData);
+	using LineCallback = std::string (*)(SourcePoint line, Sources* sources, void* userData);
 
 	std::string_view MessageTypeToString(EMessageType type);
 	std::string      FormatMessage(const Message& message, LineCallback lineCallback, Sources* sources, void* userData = nullptr);

@@ -20,7 +20,7 @@ namespace Frertex
 	{
 		std::string_view fileName   = sources->getSourceName(message.m_Span.m_Start.m_FileID);
 		std::string_view sourceName = sources->getSourceName(message.m_Span.m_Start.m_SourceID);
-		std::string      line       = lineCallback(sourceName, message.m_Point, sources, userData);
+		std::string      line       = lineCallback(message.m_Point, sources, userData);
 
 		std::size_t offset = 0;
 		while (offset < line.size())

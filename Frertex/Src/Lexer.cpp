@@ -12,9 +12,12 @@ namespace Frertex
 
 		std::vector<Token> input = tokens.get();
 
-		AST  ast;
-		auto result = lexTranslationUnit(input, 0, input.size() - 1);
-		ast.setRoot(std::move(result.m_Node));
+		AST ast;
+		if (!input.empty())
+		{
+			auto result = lexTranslationUnit(input, 0, input.size() - 1);
+			ast.setRoot(std::move(result.m_Node));
+		}
 		return ast;
 	}
 
