@@ -647,13 +647,13 @@ namespace Frertex
 		}
 
 		{
-			std::uint64_t currentLocation = 0;
-			auto&         arguments       = *node.getChild(3);
+			std::uint64_t currentInputLocation  = 0;
+			std::uint64_t currentOutputLocation = 0;
+			auto&         arguments             = *node.getChild(3);
 			for (auto& argument : arguments.getChildren())
 			{
-				auto& parameter = parameters.emplace_back(std::vector<ETypeQualifier> {}, 0, "", currentLocation++);
-
-				bool givenLocation = false;
+				auto& parameter     = parameters.emplace_back(std::vector<ETypeQualifier> {}, 0, "", ~0ULL);
+				bool  givenLocation = false;
 
 				auto& attributes = *argument.getChild(0);
 				for (auto& attribute : attributes.getChildren())
@@ -671,7 +671,7 @@ namespace Frertex
 					{
 						auto&          value   = *attribute.getChild(1);
 						IntegerLiteral literal = getIntegerLiteral(value);
-						currentLocation        = (parameter.m_Location = literal.getULong()) + 1;
+						parameter.m_Location   = literal.getULong();
 						givenLocation          = true;
 					}
 				}
@@ -682,11 +682,31 @@ namespace Frertex
 				{
 					auto str = typeQualifier.getToken().getView(*m_Sources);
 					if (str == "in")
+					{
+						if (!parameter.m_BuiltinTypeID)
+						{
+							if (!givenLocation)
+								parameter.m_Location = currentInputLocation++;
+							else
+								currentInputLocation = parameter.m_Location + 1;
+						}
 						parameter.m_Qualifiers.emplace_back(ETypeQualifier::In);
+					}
 					else if (str == "out")
+					{
+						if (!parameter.m_BuiltinTypeID)
+						{
+							if (!givenLocation)
+								parameter.m_Location = currentOutputLocation++;
+							else
+								currentOutputLocation = parameter.m_Location + 1;
+						}
 						parameter.m_Qualifiers.emplace_back(ETypeQualifier::Out);
+					}
 					else if (str == "inout")
+					{
 						parameter.m_Qualifiers.emplace_back(ETypeQualifier::InOut);
+					}
 				}
 
 				parameter.m_Typename = typeName.getChild(1)->getToken().getView(*m_Sources);
