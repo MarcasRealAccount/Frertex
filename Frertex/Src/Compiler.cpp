@@ -375,6 +375,8 @@ namespace Frertex
 			radix              = 16;
 			offset += 2;
 			break;
+		default:
+			break;
 		}
 
 		while (end > offset && std::isdigit(str[end - 1]))

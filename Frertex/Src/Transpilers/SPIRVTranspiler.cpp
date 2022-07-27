@@ -546,6 +546,8 @@ namespace Frertex::Transpilers::SPIRV
 				requiresCapability(ECapability::Float64);
 				typesCode.pushOpTypeFloat(resultID, 64);
 				break;
+			default:
+				break;
 			}
 			return resultID;
 		}

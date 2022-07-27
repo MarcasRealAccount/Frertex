@@ -31,7 +31,7 @@ namespace Frertex
 		bool        firstColumn       = true;
 
 		char c              = str[start];
-		auto characterClass = s_CharacterClasses[c];
+		auto characterClass = s_CharacterClasses[static_cast<std::uint8_t>(c) & 0x7F];
 		while (current < end)
 		{
 			bool extraState = false;
@@ -53,9 +53,11 @@ namespace Frertex
 			case ETokenClass::MultilineComment:
 				extraState = multilineCommentI == 0;
 				break;
+			default:
+				break;
 			}
 
-			auto contextualLookup = s_ContextualTokenLUT[static_cast<std::uint32_t>(tokenClass)][c & 0b0111'1111 | extraState << 7];
+			auto contextualLookup = s_ContextualTokenLUT[static_cast<std::uint32_t>(tokenClass)][(c & 0b0111'1111) | (extraState << 7)];
 
 			if (tokenClass == ETokenClass::Comment && contextualLookup.m_NewTokenClass == ETokenClass::MultilineComment)
 				multilineCommentI = 1;
@@ -80,7 +82,7 @@ namespace Frertex
 				if (current < end)
 				{
 					c              = str[current];
-					characterClass = s_CharacterClasses[c];
+					characterClass = s_CharacterClasses[static_cast<std::uint8_t>(c) & 0x7F];
 				}
 			}
 

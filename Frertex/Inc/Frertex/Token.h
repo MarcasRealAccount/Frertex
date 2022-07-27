@@ -7,6 +7,7 @@
 
 #include <ostream>
 #include <string_view>
+#include <vector>
 
 namespace Frertex
 {
