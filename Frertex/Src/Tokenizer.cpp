@@ -79,7 +79,7 @@ namespace Frertex
 					firstColumn = true;
 				if (tokenClass != ETokenClass::Unknown)
 					++tokenLength;
-				if (current < end)
+				if (current <= end)
 				{
 					c              = str[current];
 					characterClass = s_CharacterClasses[static_cast<std::uint8_t>(c) & 0x7F];
@@ -89,7 +89,10 @@ namespace Frertex
 			if ((!addToToken || contextualLookup.m_State & 0b100) && tokenLength)
 			{
 				if (tokenClass == ETokenClass::String)
+				{
 					++tokenStart;
+					--tokenEnd;
+				}
 				tokens.emplace_back(previousTokenClass, tokenStart, tokenEnd - tokenStart + 1, id, id);
 				tokenLength = 0;
 				tokenClass  = ETokenClass::Unknown;
@@ -99,8 +102,11 @@ namespace Frertex
 		if (tokenLength)
 		{
 			if (tokenClass == ETokenClass::String)
+			{
 				++tokenStart;
-			tokens.emplace_back(previousTokenClass, tokenStart, tokenEnd - tokenStart + 1, id, id);
+				--tokenEnd;
+			}
+			tokens.emplace_back(tokenClass, tokenStart, tokenEnd - tokenStart + 1, id, id);
 		}
 
 		return tokens;
