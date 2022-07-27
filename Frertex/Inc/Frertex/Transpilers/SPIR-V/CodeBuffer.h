@@ -13,6 +13,7 @@ namespace Frertex::Transpilers::SPIRV
 		void pushOpSource(std::uint32_t language, std::uint32_t version, std::uint32_t fileID = 0);
 		void pushOpMemoryModel(EAddressingMode addessingMode, EMemoryModel memoryModel);
 		void pushOpEntryPoint(EExecutionModel executionModel, std::uint32_t entrypoint, std::string_view name, const std::vector<std::uint32_t>& interface);
+		void pushOpExecutionMode(std::uint32_t entrypoint, EExecutionMode mode, const std::vector<std::uint32_t>& literals = {});
 		void pushOpCapability(ECapability capability);
 
 		void pushOpTypeVoid(std::uint32_t result);
@@ -47,6 +48,7 @@ namespace Frertex::Transpilers::SPIRV
 		void pushOpFunction(std::uint32_t returnType, std::uint32_t result, EFunctionControl functionControl, std::uint32_t functionType);
 		void pushOpFunctionParameter(std::uint32_t resultType, std::uint32_t result);
 		void pushOpFunctionEnd();
+		void pushOpFunctionCall(std::uint32_t resultType, std::uint32_t result, std::uint32_t function, const std::vector<std::uint32_t> arguments = {});
 
 		void pushOpVariable(std::uint32_t resultType, std::uint32_t result, EStorageClass storageClass, std::uint32_t initializer = 0);
 

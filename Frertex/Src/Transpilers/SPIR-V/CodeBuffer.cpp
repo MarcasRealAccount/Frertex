@@ -48,6 +48,16 @@ namespace Frertex::Transpilers::SPIRV
 		m_Code.insert(m_Code.end(), interface.begin(), interface.end());
 	}
 
+	void CodeBuffer::pushOpExecutionMode(std::uint32_t entrypoint, EExecutionMode mode, const std::vector<std::uint32_t>& literals)
+	{
+		PROFILE_FUNC;
+
+		m_Code.emplace_back(static_cast<std::uint32_t>(0x0003'0010 + (literals.size() << 16)));
+		m_Code.emplace_back(entrypoint);
+		m_Code.emplace_back(static_cast<std::uint32_t>(mode));
+		m_Code.insert(m_Code.end(), literals.begin(), literals.end());
+	}
+
 	void CodeBuffer::pushOpCapability(ECapability capability)
 	{
 		PROFILE_FUNC;
@@ -353,6 +363,17 @@ namespace Frertex::Transpilers::SPIRV
 		PROFILE_FUNC;
 
 		m_Code.emplace_back(0x0001'0038);
+	}
+
+	void CodeBuffer::pushOpFunctionCall(std::uint32_t resultType, std::uint32_t result, std::uint32_t function, const std::vector<std::uint32_t> arguments)
+	{
+		PROFILE_FUNC;
+
+		m_Code.emplace_back(static_cast<std::uint32_t>(0x0004'0039 + (arguments.size() << 16)));
+		m_Code.emplace_back(resultType);
+		m_Code.emplace_back(result);
+		m_Code.emplace_back(function);
+		m_Code.insert(m_Code.end(), arguments.begin(), arguments.end());
 	}
 
 	void CodeBuffer::pushOpVariable(std::uint32_t resultType, std::uint32_t result, EStorageClass storageClass, std::uint32_t initializer)

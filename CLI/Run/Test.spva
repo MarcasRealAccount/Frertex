@@ -1,0 +1,76 @@
+; SPIR-V
+; Version: 1.6
+; Generator: Google Shaderc over Glslang; 10
+; Bound: 45
+; Schema: 0
+               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %main "main" %outColor %inPosition
+               OpExecutionMode %main OriginUpperLeft
+               OpSource GLSL 460
+               OpSourceExtension "GL_GOOGLE_cpp_style_line_directive"
+               OpSourceExtension "GL_GOOGLE_include_directive"
+               OpName %main "main"
+               OpName %value "value"
+               OpName %i "i"
+               OpName %outColor "outColor"
+               OpName %inPosition "inPosition"
+               OpDecorate %outColor Location 0
+               OpDecorate %inPosition Location 0
+       %void = OpTypeVoid
+          %3 = OpTypeFunction %void
+      %float = OpTypeFloat 32
+%_ptr_Function_float = OpTypePointer Function %float
+    %float_0 = OpConstant %float 0
+       %uint = OpTypeInt 32 0
+%_ptr_Function_uint = OpTypePointer Function %uint
+     %uint_0 = OpConstant %uint 0
+  %uint_1024 = OpConstant %uint 1024
+       %bool = OpTypeBool
+    %float_5 = OpConstant %float 5
+        %int = OpTypeInt 32 1
+      %int_1 = OpConstant %int 1
+    %v4float = OpTypeVector %float 4
+%_ptr_Output_v4float = OpTypePointer Output %v4float
+   %outColor = OpVariable %_ptr_Output_v4float Output
+    %v3float = OpTypeVector %float 3
+%_ptr_Input_v3float = OpTypePointer Input %v3float
+ %inPosition = OpVariable %_ptr_Input_v3float Input
+    %float_1 = OpConstant %float 1
+       %main = OpFunction %void None %3
+          %5 = OpLabel
+      %value = OpVariable %_ptr_Function_float Function
+          %i = OpVariable %_ptr_Function_uint Function
+               OpStore %value %float_0
+               OpStore %i %uint_0
+               OpBranch %14
+         %14 = OpLabel
+               OpLoopMerge %16 %17 None
+               OpBranch %18
+         %18 = OpLabel
+         %19 = OpLoad %uint %i
+         %22 = OpULessThan %bool %19 %uint_1024
+               OpBranchConditional %22 %15 %16
+         %15 = OpLabel
+         %24 = OpLoad %uint %i
+         %25 = OpConvertUToF %float %24
+         %26 = OpFMul %float %float_5 %25
+         %27 = OpLoad %float %value
+         %28 = OpFAdd %float %27 %26
+               OpStore %value %28
+               OpBranch %17
+         %17 = OpLabel
+         %29 = OpLoad %uint %i
+         %32 = OpIAdd %uint %29 %int_1
+               OpStore %i %32
+               OpBranch %14
+         %16 = OpLabel
+         %39 = OpLoad %v3float %inPosition
+         %41 = OpCompositeExtract %float %39 0
+         %42 = OpCompositeExtract %float %39 1
+         %43 = OpCompositeExtract %float %39 2
+         %44 = OpCompositeConstruct %v4float %41 %42 %43 %float_1
+               OpStore %outColor %44
+               OpReturn
+               OpFunctionEnd

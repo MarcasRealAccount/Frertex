@@ -237,8 +237,8 @@ namespace Frertex::Transpilers::SPIRV
 					    }),
 					TypeIDIsBuiltIn(static_cast<ETypeIDs>(param.m_TypeID))
 				};
-				if (!info.m_InputIDs[j].m_IsBuiltin)
-					interface.emplace_back(info.m_InputIDs[j].m_ID);
+				if (!info.m_OutputIDs[j].m_IsBuiltin)
+					interface.emplace_back(info.m_OutputIDs[j].m_ID);
 			}
 			info.m_FunctionID  = spirv.m_IDBound++;
 			info.m_BaseLabelID = spirv.m_IDBound++;
@@ -328,6 +328,15 @@ namespace Frertex::Transpilers::SPIRV
 
 			entrypointsCode.pushOpEntryPoint(executionModel, info.m_FunctionID, name, interface);
 
+			switch (entrypoint.m_Type)
+			{
+			case EEntrypointType::FragmentShader:
+				executionModesCode.pushOpExecutionMode(info.m_FunctionID, EExecutionMode::OriginUpperLeft);
+				break;
+			default:
+				break;
+			}
+
 			functionsCode.pushOpFunction(
 			    getOrAddBuiltinType(ETypeIDs::Void, spirv, typesCode),
 			    info.m_FunctionID,
@@ -341,9 +350,95 @@ namespace Frertex::Transpilers::SPIRV
 
 				        return getOrAddBuiltinTypeN(ETypeIDs::Void, spirv, typesCode);
 			        }));
-			functionsCode.pushOpLabel(info.m_BaseLabelID);
+			{
+				functionsCode.pushOpLabel(info.m_BaseLabelID);
 
-			functionsCode.pushOpReturn();
+				//std::uint32_t iVarTypeID = getOrAddPointerType(
+				//    EStorageClass::Function,
+				//    spirv,
+				//    typesCode,
+				//    [&]() -> std::pair<std::string, std::uint32_t>
+				//    {
+				//	    PROFILE_FUNC;
+				//
+				//	    return getOrAddBuiltinTypeN(ETypeIDs::UInt, spirv, typesCode);
+				//    });
+				//std::uint32_t iVarID = spirv.m_IDBound++;
+				//functionsCode.pushOpVariable(iVarTypeID, iVarID, EStorageClass::Function);
+				//
+				//{
+				//	std::uint32_t loopID          = spirv.m_IDBound++;
+				//	std::uint32_t mergeID         = spirv.m_IDBound++;
+				//	std::uint32_t continuationID  = spirv.m_IDBound++;
+				//	std::uint32_t loopConditionID = spirv.m_IDBound++;
+				//	std::uint32_t loopBodyID      = spirv.m_IDBound++;
+				//	// Loop header
+				//	functionsCode.pushOpBranch(loopID);
+				//	functionsCode.pushOpLabel(loopID);
+				//	functionsCode.pushOpLoopMerge(mergeID, continuationID, ELoopControl::None);
+				//	functionsCode.pushOpBranch(loopConditionID);
+				//
+				//	// Loop condition
+				//	{
+				//		functionsCode.pushOpLabel(loopConditionID);
+				//		std::uint32_t loadID = spirv.m_IDBound++;
+				//		functionsCode.pushOpLoad(getOrAddBuiltinType(ETypeIDs::UInt, spirv, typesCode), loadID, iVarID);
+				//		std::uint32_t conditionID = spirv.m_IDBound++;
+				//		functionsCode.pushOpULessThan(
+				//		    getOrAddBuiltinType(ETypeIDs::Bool, spirv, typesCode),
+				//		    conditionID,
+				//		    loadID,
+				//		    getOrAddResultID(
+				//		        "uint_1024",
+				//		        [&]() -> std::uint32_t
+				//		        {
+				//			        PROFILE_FUNC;
+				//
+				//			        std::uint32_t elementType = getOrAddBuiltinType(ETypeIDs::UInt, spirv, typesCode);
+				//			        std::uint32_t resultID    = spirv.m_IDBound++;
+				//			        typesCode.pushOpConstant(elementType, resultID, { 1024 });
+				//			        return resultID;
+				//		        }));
+				//		functionsCode.pushOpBranchConditional(conditionID, loopBodyID, mergeID);
+				//	}
+				//
+				//	// Loop body
+				//	{
+				//		functionsCode.pushOpLabel(loopBodyID);
+				//
+				//		functionsCode.pushOpBranch(continuationID);
+				//	}
+				//
+				//	// Loop continuation
+				//	{
+				//		functionsCode.pushOpLabel(continuationID);
+				//		std::uint32_t loadID   = spirv.m_IDBound++;
+				//		std::uint32_t resultID = spirv.m_IDBound++;
+				//		functionsCode.pushOpLoad(getOrAddBuiltinType(ETypeIDs::UInt, spirv, typesCode), loadID, iVarID);
+				//		functionsCode.pushOpIAdd(
+				//		    getOrAddBuiltinType(ETypeIDs::UInt, spirv, typesCode),
+				//		    resultID,
+				//		    loadID,
+				//		    getOrAddResultID(
+				//		        "uint_1",
+				//		        [&]() -> std::uint32_t
+				//		        {
+				//			        PROFILE_FUNC;
+				//
+				//			        std::uint32_t elementType = getOrAddBuiltinType(ETypeIDs::UInt, spirv, typesCode);
+				//			        std::uint32_t resultID    = spirv.m_IDBound++;
+				//			        typesCode.pushOpConstant(elementType, resultID, { 1 });
+				//			        return resultID;
+				//		        }));
+				//		functionsCode.pushOpStore(iVarID, resultID);
+				//		functionsCode.pushOpBranch(loopID);
+				//	}
+				//
+				//	functionsCode.pushOpLabel(mergeID);
+				//}
+
+				functionsCode.pushOpReturn();
+			}
 			functionsCode.pushOpFunctionEnd();
 		}
 

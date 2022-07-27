@@ -1,12 +1,25 @@
 #version 460 core
 
-layout(location = 0) in vec4 inPosition;
-layout(location = 1) in vec4 inNormal;
+layout(location = 0) in vec3 inPosition;
 
-layout(location = 0) out vec2 outUV;
+layout(location = 0) out vec4 outColor;
+
+void funcB(int depth);
+
+void funcA(int depth)
+{
+	funcB(depth + 1);
+}
+
+void funcB(int depth)
+{
+	if (depth < 32)
+		funcA(depth + 1);
+}
 
 void main()
 {
-	gl_Position = vec4(inPosition.xyz, 1.0f);
-	outUV       = vec2(inPosition.w, inNormal.w);
+	funcA(0);
+
+	outColor = vec4(inPosition, 1.0f);
 }
