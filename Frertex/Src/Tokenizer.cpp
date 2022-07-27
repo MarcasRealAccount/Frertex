@@ -32,7 +32,7 @@ namespace Frertex
 
 		char c              = str[start];
 		auto characterClass = s_CharacterClasses[static_cast<std::uint8_t>(c) & 0x7F];
-		while (current < end)
+		while (current <= end)
 		{
 			bool extraState = false;
 			switch (tokenClass)
