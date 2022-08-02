@@ -28,6 +28,11 @@ workspace("Frertex")
 		libs.frertex:setup()
 		common:addActions()
 
+	project("Docs")
+		location("Docs/")
+		kind("Utility")
+		files("%{prj.location}/**")
+
 	group("Apps")
 	project("CLI")
 		location("CLI/")

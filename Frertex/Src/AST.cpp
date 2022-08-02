@@ -12,6 +12,7 @@ namespace Frertex
 		case EASTNodeType::Unknown: return "Unknown";
 		case EASTNodeType::IntegerLiteral: return "IntegerLiteral";
 		case EASTNodeType::FloatLiteral: return "FloatLiteral";
+		case EASTNodeType::BoolLiteral: return "BoolLiteral";
 		case EASTNodeType::TranslationUnit: return "TranslationUnit";
 		case EASTNodeType::Operator: return "Operator";
 		case EASTNodeType::TypeQualifier: return "TypeQualifier";
@@ -26,13 +27,15 @@ namespace Frertex
 		case EASTNodeType::Parameters: return "Parameters";
 		case EASTNodeType::BracedInitList: return "BracedInitList";
 		case EASTNodeType::AssignmentExpression: return "AssignmentExpression";
+		case EASTNodeType::EmptyStatement: return "EmptyStatement";
 		case EASTNodeType::ExpressionStatement: return "ExpressionStatement";
 		case EASTNodeType::CompoundStatement: return "CompoundStatement";
 		case EASTNodeType::ReturnStatement: return "ReturnStatement";
 		case EASTNodeType::Statements: return "Statements";
 		case EASTNodeType::FunctionDeclaration: return "FunctionDeclaration";
-		default: return "Unknown";
 		}
+
+		return "Unknown";
 	}
 
 	void AST::setRoot(Utils::CopyMovable<ASTNode>&& node)

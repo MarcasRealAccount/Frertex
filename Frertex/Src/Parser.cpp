@@ -1,12 +1,12 @@
-#include "Frertex/Lexer.h"
+#include "Frertex/Parser.h"
 #include "Frertex/Utils/Profiler.h"
 
 namespace Frertex
 {
-	Lexer::Lexer(Sources* sources)
+	Parser::Parser(Sources* sources)
 	    : m_Sources(sources) {}
 
-	AST Lexer::lex(Utils::CopyMovable<std::vector<Token>>&& tokens)
+	AST Parser::lex(Utils::CopyMovable<std::vector<Token>>&& tokens)
 	{
 		PROFILE_FUNC;
 
@@ -21,7 +21,7 @@ namespace Frertex
 		return ast;
 	}
 
-	void Lexer::addWarning(std::uint32_t fileID, std::uint32_t sourceID, std::size_t index, std::size_t length, std::size_t point, Utils::CopyMovable<std::string>&& message)
+	void Parser::addWarning(std::uint32_t fileID, std::uint32_t sourceID, std::size_t index, std::size_t length, std::size_t point, Utils::CopyMovable<std::string>&& message)
 	{
 		PROFILE_FUNC;
 
@@ -33,7 +33,7 @@ namespace Frertex
 		m_Messages.emplace_back(EMessageType::Warning, span, pt, message.get());
 	}
 
-	void Lexer::addError(std::uint32_t fileID, std::uint32_t sourceID, std::size_t index, std::size_t length, std::size_t point, Utils::CopyMovable<std::string>&& message)
+	void Parser::addError(std::uint32_t fileID, std::uint32_t sourceID, std::size_t index, std::size_t length, std::size_t point, Utils::CopyMovable<std::string>&& message)
 	{
 		PROFILE_FUNC;
 
@@ -45,7 +45,7 @@ namespace Frertex
 		m_Messages.emplace_back(EMessageType::Error, span, pt, message.get());
 	}
 
-	LexResult Lexer::lexTranslationUnit(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexTranslationUnit(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -67,7 +67,7 @@ namespace Frertex
 		return { usedTokens, { EASTNodeType::TranslationUnit, Token {}, std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexIntegerLiteral(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexIntegerLiteral(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -84,7 +84,7 @@ namespace Frertex
 		return { 1, { EASTNodeType::IntegerLiteral, std::move(token) } };
 	}
 
-	LexResult Lexer::lexFloatLiteral(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexFloatLiteral(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -99,7 +99,21 @@ namespace Frertex
 		return { 1, { EASTNodeType::FloatLiteral, std::move(token) } };
 	}
 
-	LexResult Lexer::lexLiteral(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexBoolLiteral(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	{
+		PROFILE_FUNC;
+
+		if (start > end)
+			return {};
+
+		Token& token = tokens[start];
+		if (token.m_Class != ETokenClass::Identifier)
+			return {};
+
+		return { 1, { EASTNodeType::BoolLiteral, std::move(token) } };
+	}
+
+	ParseResult Parser::lexLiteral(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -114,10 +128,14 @@ namespace Frertex
 		if (result.m_UsedTokens != 0)
 			return result;
 
+		result = lexBoolLiteral(tokens, start, end);
+		if (result.m_UsedTokens != 0)
+			return result;
+
 		return {};
 	}
 
-	LexResult Lexer::lexTypeQualifier(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexTypeQualifier(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -141,7 +159,7 @@ namespace Frertex
 			return {};
 	}
 
-	LexResult Lexer::lexTypeQualifiers(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexTypeQualifiers(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -163,7 +181,7 @@ namespace Frertex
 		return { usedTokens, { EASTNodeType::TypeQualifiers, Token {}, std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexIdentifier(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexIdentifier(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -176,7 +194,7 @@ namespace Frertex
 		return { 1, { EASTNodeType::Identifier, Token { token } } };
 	}
 
-	LexResult Lexer::lexTypename(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexTypename(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -201,7 +219,7 @@ namespace Frertex
 		return { usedTokens, { EASTNodeType::Typename, std::move(identifierToken), std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexArgument(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexArgument(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -222,7 +240,7 @@ namespace Frertex
 		return { usedTokens, { EASTNodeType::Argument, std::move(token), std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexArguments(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexArguments(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -285,7 +303,7 @@ namespace Frertex
 		return { argumentsEnd - start, { EASTNodeType::Arguments, Token {}, std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexAttribute(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexAttribute(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -310,7 +328,7 @@ namespace Frertex
 		return { usedTokens, { EASTNodeType::Attribute, std::move(identifierToken), std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexAttributes(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexAttributes(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -371,7 +389,7 @@ namespace Frertex
 		return { attributesEnd - start, { EASTNodeType::Attributes, Token {}, std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexParameter(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexParameter(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -402,7 +420,7 @@ namespace Frertex
 		return { usedTokens, { EASTNodeType::Parameter, std::move(identifierToken), std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexParameters(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexParameters(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -465,7 +483,7 @@ namespace Frertex
 		return { parametersEnd - start, { EASTNodeType::Parameters, Token {}, std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexBracedInitList(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexBracedInitList(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -526,7 +544,7 @@ namespace Frertex
 		return { listEnd - start, { EASTNodeType::BracedInitList, tokens[start], std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexInitializerClause(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexInitializerClause(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -540,7 +558,7 @@ namespace Frertex
 		return lexBracedInitList(tokens, start, end);
 	}
 
-	LexResult Lexer::lexAssignmentExpression(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexAssignmentExpression(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -583,7 +601,7 @@ namespace Frertex
 		return { usedTokens, { EASTNodeType::AssignmentExpression, tokens[operatorIndex], std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexExpression(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexExpression(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -597,7 +615,21 @@ namespace Frertex
 		return {};
 	}
 
-	LexResult Lexer::lexExpressionStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexEmptyStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	{
+		PROFILE_FUNC;
+
+		if (start > end)
+			return {};
+
+		auto& token = tokens[start];
+		if (token.m_Class != ETokenClass::Symbol || token.getView(*m_Sources) != ";")
+			return {};
+
+		return { 1, { EASTNodeType::EmptyStatement, tokens[start] } };
+	}
+
+	ParseResult Parser::lexExpressionStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -621,7 +653,7 @@ namespace Frertex
 		return { usedTokens, { EASTNodeType::ExpressionStatement, tokens[start + usedTokens - 1], std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexCompoundStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexCompoundStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -665,19 +697,16 @@ namespace Frertex
 				return {};
 		}
 
-		while (start + usedTokens < blockEnd - 1)
-		{
-			auto result = lexStatement(tokens, start + usedTokens, blockEnd - 1);
-			if (result.m_UsedTokens == 0)
-				return {};
-			usedTokens += result.m_UsedTokens;
-			nodes.emplace_back(std::move(result.m_Node));
-		}
+		auto result = lexStatements(tokens, start + usedTokens, blockEnd - 1);
+		if (result.m_UsedTokens == 0)
+			return {};
+		usedTokens += result.m_UsedTokens;
+		nodes.emplace_back(std::move(result.m_Node));
 
 		return { blockEnd - start, { EASTNodeType::CompoundStatement, tokens[start], std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexReturnStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexReturnStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -723,14 +752,18 @@ namespace Frertex
 		return { usedTokens, { EASTNodeType::ReturnStatement, tokens[start], std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexStatement(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
 		if (start > end)
 			return {};
 
-		auto result = lexExpressionStatement(tokens, start, end);
+		auto result = lexEmptyStatement(tokens, start, end);
+		if (result.m_UsedTokens != 0)
+			return result;
+
+		result = lexExpressionStatement(tokens, start, end);
 		if (result.m_UsedTokens != 0)
 			return result;
 
@@ -749,7 +782,7 @@ namespace Frertex
 		return {};
 	}
 
-	LexResult Lexer::lexStatements(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexStatements(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -771,7 +804,7 @@ namespace Frertex
 		return { usedTokens, { EASTNodeType::Statements, Token {}, std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexFunctionDeclaration(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexFunctionDeclaration(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
@@ -820,7 +853,7 @@ namespace Frertex
 		return { usedTokens, { EASTNodeType::FunctionDeclaration, std::move(identifierToken), std::move(nodes) } };
 	}
 
-	LexResult Lexer::lexDeclaration(std::vector<Token>& tokens, std::size_t start, std::size_t end)
+	ParseResult Parser::lexDeclaration(std::vector<Token>& tokens, std::size_t start, std::size_t end)
 	{
 		PROFILE_FUNC;
 
