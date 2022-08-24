@@ -1,10 +1,9 @@
 #include "Frertex/Message.h"
+#include "Frertex/Utils/Profiler.h"
 
 #include <fmt/format.h>
 
-#include <sstream>
-
-namespace Frertex
+namespace Frertex::Message
 {
 	std::string_view MessageTypeToString(EMessageType type)
 	{
@@ -12,78 +11,126 @@ namespace Frertex
 		{
 		case EMessageType::Warning: return "Warning";
 		case EMessageType::Error: return "Error";
-		default: return "Unknown";
 		}
+		return "?";
 	}
 
-	std::string FormatMessage(const Message& message, LineCallback lineCallback, Sources* sources, void* userData)
+	std::string Message::format(const Source::Sources* sources, const std::vector<Tokenizer::Token>& tokens) const
 	{
-		std::string_view fileName   = sources->getSourceName(message.m_Span.m_Start.m_FileID);
-		std::string_view sourceName = sources->getSourceName(message.m_Span.m_Start.m_SourceID);
-		std::string      line       = lineCallback(message.m_Point, sources, userData);
+		PROFILE_FUNC;
 
-		std::size_t offset = 0;
-		while (offset < line.size())
-		{
-			offset = line.find_first_of('\t', offset);
-			if (offset >= line.size())
-				break;
-			line.replace(offset, 1, "    ");
-			offset += 4;
-		}
+		std::string_view fileName = sources->getSourceName(m_Point.m_FileID);
 
-		if (message.m_Span.m_Start.m_SourceID != message.m_Span.m_End.m_SourceID)
-			return fmt::format("{} {}:{} {}: {}\n{}\n{}^\nMultifile messages not supported, and never will, sorry :)",
-			                   fileName,
-			                   message.m_Point.m_Line + 1,
-			                   message.m_Point.m_Column + 1,
-			                   MessageTypeToString(message.m_Type),
-			                   message.m_Message,
-			                   line,
-			                   std::string(message.m_Span.m_Start.m_Column + 1, ' '));
+		std::size_t      firstLine  = tokens[m_StartToken].getSpan(sources).m_StartLine;
+		auto             source     = Tokenizer::ReconstructSource(sources, tokens, m_StartToken, m_EndToken);
+		std::string_view sourceView = source.m_Str;
 
-		if (message.m_Span.m_Start.m_Line == message.m_Span.m_End.m_Line)
+		std::vector<std::string_view> sourceLines;
+		std::vector<std::size_t>      sourceLineIndices;
+		std::size_t                   lineStart = 0;
+		sourceLineIndices.emplace_back(0);
+		for (std::size_t i = 0; i < sourceView.size(); ++i)
 		{
-			return fmt::format("{} {}:{} {}: {}\n{}\n{}{}^{}",
-			                   fileName,
-			                   message.m_Point.m_Line + 1,
-			                   message.m_Point.m_Column + 1,
-			                   MessageTypeToString(message.m_Type),
-			                   message.m_Message,
-			                   line,
-			                   std::string(message.m_Span.m_Start.m_Column, ' '),
-			                   std::string(message.m_Point.m_Column - message.m_Span.m_Start.m_Column, '~'),
-			                   std::string(message.m_Span.m_End.m_Column - message.m_Point.m_Column, '~'));
-		}
-		else
-		{
-			std::size_t spaces, squigglesStart, squigglesEnd;
-			if (message.m_Span.m_Start.m_Line == message.m_Point.m_Line)
+			if (sourceView[i] == '\n')
 			{
-				spaces         = message.m_Span.m_Start.m_Column;
-				squigglesStart = message.m_Point.m_Column - message.m_Span.m_Start.m_Column;
+				sourceLines.emplace_back(sourceView.substr(lineStart, i - lineStart));
+				lineStart = i + 1;
+				sourceLineIndices.emplace_back(lineStart);
 			}
-			else
-			{
-				spaces         = 0;
-				squigglesStart = message.m_Point.m_Column;
-			}
-			if (message.m_Span.m_End.m_Line == message.m_Point.m_Line)
-				squigglesEnd = message.m_Span.m_End.m_Column - message.m_Point.m_Column;
-			else
-				squigglesEnd = line.size() - message.m_Point.m_Column - 1;
-			return fmt::format("{} {}:{} -> {}:{} {}: {}\n{}\n{}{}^{}\nMultiline messages not supported atm, sorry :)",
-			                   fileName,
-			                   message.m_Span.m_Start.m_Line + 1,
-			                   message.m_Span.m_Start.m_Column + 1,
-			                   message.m_Span.m_End.m_Line + 1,
-			                   message.m_Span.m_End.m_Column + 1,
-			                   MessageTypeToString(message.m_Type),
-			                   message.m_Message,
-			                   line,
-			                   std::string(spaces, ' '),
-			                   std::string(squigglesStart, '~'),
-			                   std::string(squigglesEnd, '~'));
 		}
+		if (lineStart < sourceView.size())
+			sourceLines.emplace_back(sourceView.substr(lineStart));
+
+		std::vector<std::string> squiggleLines(sourceLines.size());
+		for (std::size_t i = 0; i < sourceLines.size(); ++i)
+			squiggleLines[i] = std::string(sourceLines[i].size(), ' ');
+
+		for (auto& span : m_Spans)
+		{
+			auto s = source.getEnvelopingSpan(span);
+
+			std::size_t offset = s.m_Offset + (span.m_StartIndex - s.m_SourceSpan.m_StartIndex);
+			std::size_t length = span.m_EndIndex - span.m_StartIndex;
+
+			std::size_t line = 0;
+			for (; line < sourceLineIndices.size() - 1; ++line)
+			{
+				if (sourceLineIndices[line] > offset)
+				{
+					--line;
+					break;
+				}
+			}
+			std::size_t column = offset - sourceLineIndices[line];
+			for (std::size_t i = 0; i < length; ++i)
+			{
+				auto& squiggleLine = squiggleLines[line];
+				if (column >= squiggleLine.size())
+				{
+					++line;
+					column = 0;
+					if (line > squiggleLines.size())
+						break;
+					continue;
+				}
+				squiggleLine[column] = '~';
+				++column;
+			}
+		}
+
+		{
+			auto s = source.getEnvelopingSpan({ m_Point.m_Index, m_Point.m_Line, m_Point.m_Column,
+			                                    m_Point.m_Index, m_Point.m_Line, m_Point.m_Column,
+			                                    m_Point.m_FileID, m_Point.m_SourceID });
+
+			std::size_t offset = s.m_Offset + (m_Point.m_Index - s.m_SourceSpan.m_StartIndex);
+
+			std::size_t line = 0;
+			for (; line < sourceLineIndices.size() - 1; ++line)
+			{
+				if (sourceLineIndices[line] > offset)
+				{
+					--line;
+					break;
+				}
+			}
+			if (offset < sourceLineIndices[line])
+				--line;
+
+			std::size_t column = offset - sourceLineIndices[line];
+			if (column >= squiggleLines[line].size())
+				squiggleLines[line].resize(column + 1, ' ');
+			squiggleLines[line][column] = '^';
+		}
+
+		std::ostringstream str;
+		str << fmt::format("{} ({}:{})\n{}: {}\n",
+		                   fileName,
+		                   m_Point.m_Line + 1,
+		                   m_Point.m_Column + 1,
+		                   MessageTypeToString(m_Type),
+		                   m_Message);
+		for (std::size_t i = 0; i < sourceLines.size(); ++i)
+		{
+			if (i > 0)
+				str << '\n';
+			str << sourceLines[i];
+			if (squiggleLines[i].find_first_not_of(' ') < squiggleLines[i].size())
+				str << '\n'
+				    << squiggleLines[i];
+		}
+		return str.str();
 	}
-} // namespace Frertex
+
+	std::string TranspilerMessage::format(const FIL::Binary& fil) const
+	{
+		// TODO(MarcasRealAccount): Disassemble instructions
+		std::ostringstream str;
+		str << fmt::format("{}: {}\nAssociated binary: [\n",
+		                   MessageTypeToString(m_Type),
+		                   m_Message);
+
+		str << ']';
+		return str.str();
+	}
+} // namespace Frertex::Message

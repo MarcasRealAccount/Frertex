@@ -301,7 +301,7 @@ std::string_view TokenClassToString(ETokenClass clazz)
 	case ETokenClass::HexInteger: return "HexInteger";
 	case ETokenClass::Float: return "Float";
 	case ETokenClass::HexFloat: return "HexFloat";
-	case ETokenClass::Symbol: return "Symbol";
+	case ETokenClass::Symbol: return "LastSymbol";
 	case ETokenClass::Preprocessor: return "Preprocessor";
 	case ETokenClass::Comment: return "Comment";
 	case ETokenClass::MultilineComment: return "MultilineComment";
@@ -539,6 +539,22 @@ int main()
 		},
 		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT
 		{
+		    switch (character & 0b0111'111)
+		    {
+		    case '*':
+			    if (character & 0b1000'0000)
+				    return { 1, ETokenClass::MultilineComment };
+			    else
+				    return { 0b1000'0001, ETokenClass::MultilineComment };
+		    case '/':
+			    if (character & 0b1000'0000)
+				    return { 0b101, ETokenClass::MultilineComment };
+			    else
+				    return { 1, ETokenClass::MultilineComment };
+		    default:
+			    return { 1, ETokenClass::MultilineComment };
+		    }
+
 		    switch (character)
 		    {
 		    case '/': return { 0b1001, ETokenClass::MultilineComment };

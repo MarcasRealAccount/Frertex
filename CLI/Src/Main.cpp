@@ -1,17 +1,17 @@
 #include "Utils/Core.h"
 
-#include <Frertex/Compiler.h>
-#include <Frertex/FIL.h>
-#include <Frertex/Lexer.h>
-#include <Frertex/Preprocessor.h>
-#include <Frertex/Tokenizer.h>
-#include <Frertex/Transpilers/SPIRVTranspiler.h>
+#include <Frertex/Compiler/Compiler.h>
+#include <Frertex/Parser/Parser.h>
+#include <Frertex/Preprocessor/Preprocessor.h>
+#include <Frertex/Tokenizer/Tokenizer.h>
+#include <Frertex/Transpilers/SPIRV/SPIRV.h>
 #include <Frertex/Utils/Profiler.h>
 #include <Frertex/Utils/Utils.h>
 
 #include <fmt/format.h>
 
 #include <chrono>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -22,10 +22,63 @@
 #undef FormatMessage
 #endif
 
-Frertex::IncludeData ReadIncludedFile(std::string_view filename, std::string_view originalFilename = ".")
+struct ConsoleOutputCPSetter
 {
-	std::filesystem::path path = std::filesystem::relative(filename, originalFilename);
-	std::ifstream         file { path, std::ios::ate };
+public:
+	ConsoleOutputCPSetter()
+	{
+#if BUILD_IS_SYSTEM_WINDOWS
+		m_DefaultCP = GetConsoleOutputCP();
+		SetConsoleOutputCP(65001);
+#endif
+	}
+
+	~ConsoleOutputCPSetter()
+	{
+#if BUILD_IS_SYSTEM_WINDOWS
+		SetConsoleOutputCP(m_DefaultCP);
+#endif
+	}
+
+private:
+#if BUILD_IS_SYSTEM_WINDOWS
+	UINT m_DefaultCP;
+#endif
+};
+
+struct Timer
+{
+	using Clock = std::chrono::high_resolution_clock;
+
+	void begin() { m_Start = Clock::now(); }
+	void end() { m_End = Clock::now(); }
+
+	float getTime() const
+	{
+		return std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(m_End - m_Start).count();
+	}
+
+	std::string formatTime(Frertex::Utils::CopyMovable<std::string>&& name) const
+	{
+		return fmt::format("{} finished in {} ms\n", name.get(), getTime());
+	}
+
+private:
+	Clock::time_point m_Start, m_End;
+};
+
+std::filesystem::path GetIncludedFilepath(std::string_view filename, const std::filesystem::path& originalFilepath = ".")
+{
+	PROFILE_FUNC;
+
+	return std::filesystem::absolute(std::filesystem::relative(filename, originalFilepath));
+}
+
+Frertex::Source::IncludeData ReadIncludedFile(const std::filesystem::path& filepath)
+{
+	PROFILE_FUNC;
+
+	std::ifstream file { filepath, std::ios::ate };
 	if (file)
 	{
 		std::string source;
@@ -33,27 +86,41 @@ Frertex::IncludeData ReadIncludedFile(std::string_view filename, std::string_vie
 		file.seekg(0);
 		file.read(source.data(), source.size());
 		file.close();
-		return { Frertex::EIncludeStatus::Success, std::move(source), std::filesystem::absolute(path).string() };
+		return { Frertex::Source::EIncludeStatus::Success, std::move(source), std::filesystem::canonical(filepath) };
 	}
 	return {};
 }
 
-std::string ReadFileLine(Frertex::SourcePoint line, Frertex::Sources* sources, [[maybe_unused]] void* userData)
+void MessageHandler(const Frertex::Source::Sources* sources, const std::vector<Frertex::Tokenizer::Token>& tokens, const Frertex::Message::Message& message)
 {
-	if (!sources)
-		return {};
-	Frertex::Source* source = sources->getSource(line.m_SourceID);
-	if (!source)
-		return {};
+	PROFILE_FUNC;
 
-	auto&       str       = source->getStr();
-	std::size_t lineStart = str.find_last_of('\n', line.m_Index);
-	if (lineStart >= str.size())
-		lineStart = 0;
-	std::size_t lineEnd = str.find_first_of('\n', line.m_Index);
-	if (lineEnd >= str.size())
-		lineEnd = str.size();
-	return str.substr(lineStart, lineEnd - lineStart);
+	std::string msg = message.format(sources, tokens);
+	switch (message.m_Type)
+	{
+	case Frertex::Message::EMessageType::Warning:
+		std::cout << msg << '\n';
+		break;
+	case Frertex::Message::EMessageType::Error:
+		std::cerr << msg << '\n';
+		break;
+	}
+}
+
+void TranspilerMessageHandler(const Frertex::FIL::Binary& fil, const Frertex::Message::TranspilerMessage& message)
+{
+	PROFILE_FUNC;
+
+	std::string msg = message.format(fil);
+	switch (message.m_Type)
+	{
+	case Frertex::Message::EMessageType::Warning:
+		std::cout << msg << '\n';
+		break;
+	case Frertex::Message::EMessageType::Error:
+		std::cerr << msg << '\n';
+		break;
+	}
 }
 
 std::size_t UTF8Codepoints(const std::string& str)
@@ -85,7 +152,7 @@ std::size_t UTF8Codepoints(const std::string& str)
 	return count;
 }
 
-void PrintASTNode(const Frertex::ASTNode& node, Frertex::Sources* sources, std::vector<std::vector<std::string>>& lines, std::vector<bool>& layers, bool end = true)
+void PrintASTNode(const Frertex::AST::Node& node, const Frertex::Source::Sources* sources, std::vector<std::vector<std::string>>& lines, std::vector<bool>& layers, bool end = true)
 {
 	{
 		std::vector<std::string> line;
@@ -106,17 +173,17 @@ void PrintASTNode(const Frertex::ASTNode& node, Frertex::Sources* sources, std::
 		layers.emplace_back(!end);
 
 
-		str << Frertex::ASTNodeTypeToString(node.getType());
+		str << Frertex::AST::TypeToString(node.getType());
 		line.emplace_back(str.str());
 		str         = {};
 		auto& token = node.getToken();
-		auto  span  = token.getSpan(*sources);
-		str << '(' << span << ')';
+		auto  span  = token.getSpan(sources);
+		str << '(' << Frertex::Source::SourceSpanToString(span) << ')';
 		line.emplace_back(str.str());
 		str = {};
-		if (span.m_Start.m_Line == span.m_End.m_Line)
+		if (span.m_StartLine == span.m_EndLine)
 		{
-			auto tokenStr = token.getView(*sources);
+			auto tokenStr = token.getView(sources);
 			if (tokenStr.find_first_of('\n') >= tokenStr.size())
 			{
 				str << "= \"" << Frertex::Utils::EscapeString(tokenStr) << '"';
@@ -133,11 +200,11 @@ void PrintASTNode(const Frertex::ASTNode& node, Frertex::Sources* sources, std::
 	layers.pop_back();
 }
 
-void PrintAST(const Frertex::AST& ast, Frertex::Sources* sources)
+void PrintAST(const Frertex::AST::Node& ast, const Frertex::Source::Sources* sources)
 {
 	std::vector<std::vector<std::string>> lines;
 	std::vector<bool>                     layers;
-	PrintASTNode(*ast.getRoot(), sources, lines, layers);
+	PrintASTNode(ast, sources, lines, layers);
 
 	std::vector<std::size_t> sizes;
 	for (auto& line : lines)
@@ -169,266 +236,73 @@ void PrintAST(const Frertex::AST& ast, Frertex::Sources* sources)
 	std::cout << str.str() << '\n';
 }
 
-struct Timer
-{
-	using Clock = std::chrono::high_resolution_clock;
-
-	void begin()
-	{
-		m_Start = Clock::now();
-	}
-
-	void end()
-	{
-		m_End = Clock::now();
-	}
-
-	float getTime() const
-	{
-		return std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(m_End - m_Start).count();
-	}
-
-	std::string formatTime(Frertex::Utils::CopyMovable<std::string>&& name) const
-	{
-		return fmt::format("{} finished in {} ms\n", name.get(), getTime());
-	}
-
-	Clock::time_point m_Start, m_End;
-};
-
 int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 {
-#if BUILD_IS_SYSTEM_WINDOWS
-	UINT defaultCP = GetConsoleOutputCP();
-	SetConsoleOutputCP(65001);
-#endif
+	ConsoleOutputCPSetter _consoleOutputCPSetter {};
 
 	Timer              timer {};
 	std::ostringstream times;
 
-	Frertex::Sources sources;
+	Frertex::Source::Sources sources;
 
 	auto mainSource = sources.addSource(ReadIncludedFile("Test.frer"));
 
 	timer.begin();
-	auto tokens = Frertex::Tokenize(sources.getSource(mainSource));
+	auto tokens = Frertex::Tokenizer::Tokenize(sources.getSource(mainSource));
 	timer.end();
 	times << timer.formatTime("Tokenizer");
 
+	Frertex::Preprocessor::State preprocessorState { &sources, &GetIncludedFilepath, &ReadIncludedFile, &MessageHandler };
 	timer.begin();
-	Frertex::Preprocessor preprocessor { &sources, &ReadIncludedFile };
-	tokens = preprocessor.process(std::move(tokens));
+	tokens = preprocessorState.preprocess(std::move(tokens));
 	timer.end();
 	times << timer.formatTime("Preprocessor");
-
-	bool errored = false;
-	if (!preprocessor.getMessages().empty())
+	if (preprocessorState.errored())
 	{
-		for (auto& message : preprocessor.getMessages())
-		{
-			std::string output = Frertex::FormatMessage(
-			    message,
-			    &ReadFileLine,
-			    &sources);
-			switch (message.m_Type)
-			{
-			case Frertex::EMessageType::Warning:
-				std::cout << output << '\n';
-				break;
-			case Frertex::EMessageType::Error:
-				errored = true;
-				std::cerr << output << '\n';
-				break;
-			}
-		}
-		if (errored)
-		{
-#if BUILD_IS_SYSTEM_WINDOWS
-			SetConsoleOutputCP(defaultCP);
-#endif
-			return 1;
-		}
+		std::cout << Frertex::Utils::ProfilerToString();
+		std::cout << times.str();
+		return 1;
 	}
-	//for (auto& token : tokens)
-	//	std::cout << token << '\n';
-	//std::cout << '\n';
 
-	//std::ostringstream   str;
-	//Frertex::ETokenClass previousClass = Frertex::ETokenClass::Unknown;
-	//std::size_t          indents       = 0;
-	//for (auto& token : tokens)
-	//{
-	//	if (previousClass == Frertex::ETokenClass::Identifier)
-	//	{
-	//		if (token.m_Class == Frertex::ETokenClass::Symbol)
-	//		{
-	//			if (token.m_Str == "_" ||
-	//			    token.m_Str == "{" ||
-	//			    token.m_Str == "=")
-	//				str << ' ';
-	//		}
-	//		else
-	//		{
-	//			str << ' ';
-	//		}
-	//	}
-	//	else if (token.m_Class == Frertex::ETokenClass::Symbol)
-	//	{
-	//		if (token.m_Str == "}")
-	//		{
-	//			--indents;
-	//			str.seekp(-1, std::ios::cur);
-	//		}
-	//	}
-
-	//	str << token.m_Str;
-
-	//	if (token.m_Class == Frertex::ETokenClass::Symbol)
-	//	{
-	//		if (token.m_Str == "," ||
-	//		    token.m_Str == ":" ||
-	//		    token.m_Str == "=")
-	//		{
-	//			str << ' ';
-	//		}
-	//		else if (token.m_Str == ";" ||
-	//		         token.m_Str == "}")
-	//		{
-	//			str << '\n'
-	//			    << std::string(indents, '\t');
-	//		}
-	//		else if (token.m_Str == "{")
-	//		{
-	//			++indents;
-	//			str << '\n'
-	//			    << std::string(indents, '\t');
-	//		}
-	//	}
-	//	else if (token.m_Class == Frertex::ETokenClass::Preprocessor)
-	//	{
-	//		str << '\n'
-	//		    << std::string(indents, '\t');
-	//	}
-
-	//	previousClass = token.m_Class;
-	//}
-	//std::cout << str.str() << "\n";
-
+	Frertex::Parser::State parserState { &sources, &MessageHandler };
 	timer.begin();
-	Frertex::Lexer lexer { &sources };
-	auto           ast = lexer.lex(std::move(tokens));
+	auto ast = parserState.parse(std::move(tokens));
 	timer.end();
-	times << timer.formatTime("Lexer");
-
-	if (!lexer.getMessages().empty())
+	times << timer.formatTime("Parser");
+	if (parserState.errored())
 	{
-		for (auto& message : lexer.getMessages())
-		{
-			std::string output = Frertex::FormatMessage(
-			    message,
-			    &ReadFileLine,
-			    &sources);
-			switch (message.m_Type)
-			{
-			case Frertex::EMessageType::Warning:
-				std::cout << output << '\n';
-				break;
-			case Frertex::EMessageType::Error:
-				errored = true;
-				std::cerr << output << '\n';
-				break;
-			}
-		}
-		if (errored)
-		{
-#if BUILD_IS_SYSTEM_WINDOWS
-			SetConsoleOutputCP(defaultCP);
-#endif
-			return 2;
-		}
+		std::cout << Frertex::Utils::ProfilerToString();
+		std::cout << times.str();
+		return 2;
 	}
-	if (!ast.getRoot())
-		std::cout << "No Root\n";
-	else
-		PrintAST(ast, &sources);
-	std::cout << '\n';
 
+	Frertex::Compiler::State compilerState { &sources, &MessageHandler, parserState.moveTokens() };
 	timer.begin();
-	Frertex::Compiler compiler { &sources };
-	auto              fil = compiler.compile(std::move(ast));
+	auto fil = compilerState.compile(std::move(ast));
 	timer.end();
 	times << timer.formatTime("Compiler");
-
-	if (!compiler.getMessages().empty())
+	if (compilerState.errored())
 	{
-		for (auto& message : compiler.getMessages())
-		{
-			std::string output = Frertex::FormatMessage(
-			    message,
-			    &ReadFileLine,
-			    &sources);
-			switch (message.m_Type)
-			{
-			case Frertex::EMessageType::Warning:
-				std::cout << output << '\n';
-				break;
-			case Frertex::EMessageType::Error:
-				errored = true;
-				std::cerr << output << '\n';
-				break;
-			}
-		}
-		if (errored)
-		{
-#if BUILD_IS_SYSTEM_WINDOWS
-			SetConsoleOutputCP(defaultCP);
-#endif
-			return 3;
-		}
+		std::cout << Frertex::Utils::ProfilerToString();
+		std::cout << times.str();
+		return 3;
 	}
-	Frertex::WriteFILToFile("Output.fil", fil);
+	Frertex::FIL::WriteToFile(fil, "Output.fil");
 
+	Frertex::Transpilers::SPIRV::State spirvState { &TranspilerMessageHandler };
 	timer.begin();
-	Frertex::Transpilers::SPIRV::SPIRVTranspiler transpiler { &sources };
-
-	auto spirv = transpiler.transpile(std::move(fil));
+	auto spirv = spirvState.transpile(std::move(fil));
 	timer.end();
 	times << timer.formatTime("SPIR-V Transpiler");
-
-	if (!transpiler.getMessages().empty())
+	if (spirvState.errored())
 	{
-		for (auto& message : transpiler.getMessages())
-		{
-			std::string output = Frertex::FormatMessage(
-			    message,
-			    &ReadFileLine,
-			    &sources);
-			switch (message.m_Type)
-			{
-			case Frertex::EMessageType::Warning:
-				std::cout << output << '\n';
-				break;
-			case Frertex::EMessageType::Error:
-				errored = true;
-				std::cerr << output << '\n';
-				break;
-			}
-		}
-		if (errored)
-		{
-#if BUILD_IS_SYSTEM_WINDOWS
-			SetConsoleOutputCP(defaultCP);
-#endif
-			return 4;
-		}
+		std::cout << Frertex::Utils::ProfilerToString();
+		std::cout << times.str();
+		return 4;
 	}
-	Frertex::Transpilers::SPIRV::WriteSPIRVToFile("Output.spv", spirv);
+	Frertex::Transpilers::SPIRV::WriteToFile(spirv, "Output.spv");
 
 	std::cout << Frertex::Utils::ProfilerToString();
-
 	std::cout << times.str();
-
-#if BUILD_IS_SYSTEM_WINDOWS
-	SetConsoleOutputCP(defaultCP);
-#endif
+	return 0;
 }

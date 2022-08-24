@@ -598,6 +598,20 @@ namespace Frertex
 		return 0.0f;
 	}
 
+	bool Compiler::getBoolLiteral([[maybe_unused]] ASTNode& node)
+	{
+		PROFILE_FUNC;
+
+		auto str = node.getToken().getView(*m_Sources);
+		if (str == "true")
+			return true;
+		else if (str == "false")
+			return false;
+
+		addError(node.getToken(), node.getToken().m_Index, "Expected 'true' or 'false'");
+		return false;
+	}
+
 	void Compiler::compileFunctionDeclaration(ASTNode& node, const std::string& prefix)
 	{
 		PROFILE_FUNC;
@@ -745,6 +759,11 @@ namespace Frertex
 		PROFILE_FUNC;
 
 		// TODO(MarcasRealAccount): Implement assignment expressions
+
+		auto identifier  = node.getChild(0);
+		auto initializer = node.getChild(1);
+
+
 
 		addWarning(node.getToken(), node.getToken().m_Index, "How compile assignment expression???");
 	}

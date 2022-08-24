@@ -1,5 +1,3 @@
-#include "Other.frer"
-
 [[VertexShader]]
 void Vert(in float4 inPosition,
           in float4 inNormal,
