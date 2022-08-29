@@ -1,5 +1,9 @@
 #pragma once
 
+#include "EntrypointType.h"
+#include "TypeID.h"
+#include "TypeQualifier.h"
+
 #include <filesystem>
 
 namespace Frertex::FIL

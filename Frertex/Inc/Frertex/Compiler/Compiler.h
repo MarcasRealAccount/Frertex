@@ -52,12 +52,14 @@ namespace Frertex::Compiler
 	struct FunctionDeclaration
 	{
 	public:
-
+		FunctionDeclaration(Utils::CopyMovable<std::string>&& name, FIL::EEntrypointType type, Utils::CopyMovable<std::vector<FunctionParameter>>&& parameters, Utils::CopyMovable<std::vector<std::uint32_t>>&& code)
+		    : m_Name(name.get()), m_Type(type), m_Parameters(parameters.get()), m_Code(code.get()) {}
 
 	public:
+		std::string                    m_Name;
+		FIL::EEntrypointType           m_Type;
 		std::vector<FunctionParameter> m_Parameters;
-
-		std::vector<std::uint32_t> m_Code;
+		std::vector<std::uint32_t>     m_Code;
 	};
 
 	struct Scope
@@ -86,8 +88,6 @@ namespace Frertex::Compiler
 		void compileAssignmentExpression(AST::Node* node);
 		void compileExpression(AST::Node* node);
 		void compileStatements(AST::Node* root);
-
-		FIL::ETypeID getBuiltinTypeID(std::string_view type) const;
 
 		void pushScope();
 		void popScope();
