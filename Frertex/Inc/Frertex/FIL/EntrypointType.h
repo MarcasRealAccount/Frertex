@@ -26,4 +26,5 @@ namespace Frertex::FIL
 	};
 
 	std::string_view EntrypointTypeToString(EEntrypointType type);
+	EEntrypointType  StringToEntrypointType(std::string_view view);
 } // namespace Frertex::FIL
