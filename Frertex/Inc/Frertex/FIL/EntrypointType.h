@@ -21,8 +21,8 @@ namespace Frertex::FIL
 		RTMissShader                 = 0x0800,
 		RTIntersectionShader         = 0x1000,
 		RTCallableShader             = 0x2000,
-		NVTaskShader                 = 0x0040,
-		NVMeshShader                 = 0x0080
+		TaskShader                   = 0x0040,
+		MeshShader                   = 0x0080
 	};
 
 	std::string_view EntrypointTypeToString(EEntrypointType type);

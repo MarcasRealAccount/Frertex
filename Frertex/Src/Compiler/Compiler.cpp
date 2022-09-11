@@ -11,30 +11,71 @@ namespace Frertex::Compiler
 		PROFILE_FUNC;
 
 		m_AST = ast.get();
+		m_FunctionDefinitions.clear();
+		m_FunctionDeclarations.clear();
+		m_Types.clear();
+		m_Variables.clear();
+		m_Scopes = {};
 
-		getFunctionDefinitions();
+		pushScope();
+
+		// Get definitions
+		getFunctionDefinitions(&m_AST);
 
 		FIL::Binary binary;
 
 		return binary;
 	}
 
-	void State::getFunctionDefinitions()
+	void State::getFunctionDefinitions(AST::Node* root)
 	{
-		for (auto& node : m_AST.getChildren())
+		for (auto& node : root->getChildren())
 		{
-			if (node.getType() == AST::EType::FunctionDeclaration)
+			switch (node.getType())
+			{
+			case AST::EType::CompoundStatement:
+				getFunctionDefinitions(&node);
+				break;
+			case AST::EType::FunctionDeclaration:
 			{
 				auto                 attributes = node.getChild(0);
 				FIL::EEntrypointType type       = FIL::EEntrypointType::None;
 				for (auto& attribute : attributes->getChildren())
 				{
-					type = FIL::StringToEntrypointType(attribute.getToken().getView(m_Sources));
-					if (type != FIL::EEntrypointType::None)
-						break;
+					if (type == FIL::EEntrypointType::None)
+					{
+						type = FIL::StringToEntrypointType(attribute.getToken().getView(m_Sources));
+						if (type == FIL::EEntrypointType::None)
+							reportWarning(attribute.getToken().m_Index,
+							              attribute.getToken().m_Index,
+							              { attribute.getToken().getSpan(m_Sources) },
+							              attribute.getToken().getStart(m_Sources),
+							              "Attribute unused");
+					}
+					else
+						reportWarning(attribute.getToken().m_Index,
+						              attribute.getToken().m_Index,
+						              { attribute.getToken().getSpan(m_Sources) },
+						              attribute.getToken().getStart(m_Sources),
+						              "Attribute unused");
 				}
 
-				m_FunctionDefinitions.emplace_back(node.getChild(2)->getToken().getView(m_Sources), type, node.getChild(4));
+				auto& currentNamespace     = m_Scopes.top().m_CurrentNamespace;
+				auto  functionCompoundNode = node.getChild(4);
+				auto& function             = m_FunctionDefinitions.emplace_back(currentNamespace, node.getChild(2)->getToken().getView(m_Sources), type, functionCompoundNode);
+
+				auto newNamespace = currentNamespace.empty() ? function.m_Name : (currentNamespace + "::" + function.m_Name);
+
+				pushScope();
+				m_Scopes.top().m_CurrentNamespace = newNamespace;
+
+				getFunctionDefinitions(functionCompoundNode);
+
+				popScope();
+				break;
+			}
+			default:
+				break;
 			}
 		}
 	}
@@ -57,10 +98,12 @@ namespace Frertex::Compiler
 
 	void State::pushScope()
 	{
+		m_Scopes.emplace();
 	}
 
 	void State::popScope()
 	{
+		m_Scopes.pop();
 	}
 
 	void State::reportMessage(Message::EMessageType type, std::size_t startToken, std::size_t endToken, Utils::CopyMovable<std::vector<Source::SourceSpan>>&& spans, Source::SourcePoint point, Utils::CopyMovable<std::string>&& message)

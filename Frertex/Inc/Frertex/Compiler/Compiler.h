@@ -29,10 +29,11 @@ namespace Frertex::Compiler
 	struct FunctionDefinition
 	{
 	public:
-		FunctionDefinition(Utils::CopyMovable<std::string>&& name, FIL::EEntrypointType type, AST::Node* root)
-		    : m_Name(name.get()), m_Type(type), m_Root(root) {}
+		FunctionDefinition(Utils::CopyMovable<std::string>&& nameSpace, Utils::CopyMovable<std::string>&& name, FIL::EEntrypointType type, AST::Node* root)
+		    : m_Namespace(nameSpace.get()), m_Name(name.get()), m_Type(type), m_Root(root) {}
 
 	public:
+		std::string          m_Namespace;
 		std::string          m_Name;
 		FIL::EEntrypointType m_Type;
 		AST::Node*           m_Root;
@@ -52,10 +53,11 @@ namespace Frertex::Compiler
 	struct FunctionDeclaration
 	{
 	public:
-		FunctionDeclaration(Utils::CopyMovable<std::string>&& name, FIL::EEntrypointType type, Utils::CopyMovable<std::vector<FunctionParameter>>&& parameters, Utils::CopyMovable<std::vector<std::uint32_t>>&& code)
-		    : m_Name(name.get()), m_Type(type), m_Parameters(parameters.get()), m_Code(code.get()) {}
+		FunctionDeclaration(Utils::CopyMovable<std::string>&& nameSpace, Utils::CopyMovable<std::string>&& name, FIL::EEntrypointType type, Utils::CopyMovable<std::vector<FunctionParameter>>&& parameters, Utils::CopyMovable<std::vector<std::uint32_t>>&& code)
+		    : m_Namespace(nameSpace.get()), m_Name(name.get()), m_Type(type), m_Parameters(parameters.get()), m_Code(code.get()) {}
 
 	public:
+		std::string                    m_Namespace;
 		std::string                    m_Name;
 		FIL::EEntrypointType           m_Type;
 		std::vector<FunctionParameter> m_Parameters;
@@ -82,7 +84,7 @@ namespace Frertex::Compiler
 		auto errored() const { return m_Errored; }
 
 	private:
-		void getFunctionDefinitions();
+		void getFunctionDefinitions(AST::Node* root);
 
 		void compileFunctionDeclaration(AST::Node* node);
 		void compileAssignmentExpression(AST::Node* node);
