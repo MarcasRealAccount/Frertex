@@ -31,7 +31,7 @@ InitializerClause?:
 BracedInitList: "{" InitializerClause "}";
 
 Parameters: "(" (Parameter ("," Parameter)*)? ")";
-Parameter:  Attributes Typename Identifier;
+Parameter:  Attributes ParameterTypename Identifier;
 
 Attributes: "[[" (Attribute ("," Attribute)*)? "]]";
 Attribute:  Identifier Arguments;
@@ -39,9 +39,10 @@ Attribute:  Identifier Arguments;
 Arguments: "(" (Argument ("," Argument)*)? ")";
 Argument:  Literal;
 
-Typename:       TypeQualifiers Identifier;
-TypeQualifiers: TypeQualifier*;
-TypeQualifier:  "in" | "out" | "inout";
+Typename:                  Identifier;
+ParameterTypename: TypeQualifiers Typename
+TypeQualifiers:            TypeQualifier*;
+TypeQualifier:             "in" | "out" | "inout";
 
 Identifier: NonDigit (NonDigit | Digit)*;
 NonDigit?:  '[A-Za-z_]';

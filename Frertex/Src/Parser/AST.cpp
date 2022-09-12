@@ -15,6 +15,7 @@ namespace Frertex::AST
 		case EType::TypeQualifiers: return "TypeQualifiers";
 		case EType::Identifier: return "Identifier";
 		case EType::Typename: return "Typename";
+		case EType::FunctionParameterTypename: return "FunctionParameterTypename";
 		case EType::Argument: return "Argument";
 		case EType::Arguments: return "Arguments";
 		case EType::Attribute: return "Attribute";

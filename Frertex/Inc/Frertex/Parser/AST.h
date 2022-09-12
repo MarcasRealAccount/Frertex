@@ -17,6 +17,7 @@ namespace Frertex::AST
 		TypeQualifiers,
 		Identifier,
 		Typename,
+		FunctionParameterTypename,
 		Argument,
 		Arguments,
 		Attribute,

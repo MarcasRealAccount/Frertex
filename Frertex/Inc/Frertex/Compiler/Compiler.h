@@ -13,8 +13,14 @@ namespace Frertex::Compiler
 	struct Typename
 	{
 	public:
+		FIL::ETypeID m_TypeID;
+	};
+
+	struct ParameterTypename
+	{
+	public:
 		std::vector<FIL::ETypeQualifier> m_Qualifiers;
-		FIL::ETypeID                     m_TypeID;
+		Typename                         m_Typename;
 	};
 
 	struct TypeInfo
@@ -47,24 +53,28 @@ namespace Frertex::Compiler
 		EntrypointParameter()
 		    : m_Typename({}), m_BuiltinType(FIL::ETypeID::Void), m_Location(0) {}
 
-		EntrypointParameter(Typename typeName, FIL::ETypeID builtinType, std::uint64_t location)
-		    : m_Typename(typeName), m_BuiltinType(builtinType), m_Location(location) {}
+		EntrypointParameter(Utils::CopyMovable<ParameterTypename>&& typeName, FIL::ETypeID builtinType, std::uint64_t location)
+		    : m_Typename(typeName.get()), m_BuiltinType(builtinType), m_Location(location) {}
 
 	public:
-		Typename      m_Typename;
-		FIL::ETypeID  m_BuiltinType;
-		std::uint64_t m_Location;
+		ParameterTypename m_Typename;
+		FIL::ETypeID      m_BuiltinType;
+		std::uint64_t     m_Location;
 	};
 
 	struct EntrypointDeclaration
 	{
 	public:
 		EntrypointDeclaration(Utils::CopyMovable<std::string>&& nameSpace, Utils::CopyMovable<std::string>&& name, FIL::EEntrypointType type, Utils::CopyMovable<std::vector<EntrypointParameter>>&& parameters, Utils::CopyMovable<std::vector<std::uint32_t>>&& code)
-		    : m_Namespace(nameSpace.get()), m_Name(name.get()), m_Type(type), m_Parameters(parameters.get()), m_Code(code.get()) {}
+		    : m_Namespace(nameSpace.get()), m_Name(name.get()), m_Type(type), m_Parameters(parameters.get()), m_Code(code.get())
+		{
+			m_FullName = m_Namespace.empty() ? m_Name : (m_Namespace + "::" + m_Name);
+		}
 
 	public:
 		std::string                      m_Namespace;
 		std::string                      m_Name;
+		std::string                      m_FullName;
 		FIL::EEntrypointType             m_Type;
 		std::vector<EntrypointParameter> m_Parameters;
 		std::vector<std::uint32_t>       m_Code;
@@ -89,22 +99,27 @@ namespace Frertex::Compiler
 		FunctionParameter()
 		    : m_Typename({}) {}
 
-		FunctionParameter(Typename typeName)
-		    : m_Typename(typeName) {}
+		FunctionParameter(Utils::CopyMovable<ParameterTypename>&& typeName)
+		    : m_Typename(typeName.get()) {}
 
 	public:
-		Typename m_Typename;
+		ParameterTypename m_Typename;
 	};
 
 	struct FunctionDeclaration
 	{
 	public:
-		FunctionDeclaration(Utils::CopyMovable<std::string>&& nameSpace, Utils::CopyMovable<std::string>&& name, Utils::CopyMovable<std::vector<FunctionParameter>>&& parameters, Utils::CopyMovable<std::vector<std::uint32_t>>&& code)
-		    : m_Namespace(nameSpace.get()), m_Name(name.get()), m_Parameters(parameters.get()), m_Code(code.get()) {}
+		FunctionDeclaration(Utils::CopyMovable<std::string>&& nameSpace, Utils::CopyMovable<std::string>&& name, Typename returnType, Utils::CopyMovable<std::vector<FunctionParameter>>&& parameters, Utils::CopyMovable<std::vector<std::uint32_t>>&& code)
+		    : m_Namespace(nameSpace.get()), m_Name(name.get()), m_ReturnType(returnType), m_Parameters(parameters.get()), m_Code(code.get())
+		{
+			m_FullName = m_Namespace.empty() ? m_Name : (m_Namespace + "::" + m_Name);
+		}
 
 	public:
 		std::string                    m_Namespace;
 		std::string                    m_Name;
+		std::string                    m_FullName;
+		Typename                       m_ReturnType;
 		std::vector<FunctionParameter> m_Parameters;
 		std::vector<std::uint32_t>     m_Code;
 	};

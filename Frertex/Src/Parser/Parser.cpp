@@ -400,6 +400,27 @@ namespace Frertex::Parser
 		std::size_t            usedTokens = 0;
 		std::vector<AST::Node> nodes;
 
+		auto result = parseIdentifier(start + usedTokens, end);
+		if (result.m_UsedTokens == 0)
+			return {};
+		usedTokens += result.m_UsedTokens;
+		nodes.emplace_back(std::move(result.m_Node));
+
+		auto identifierToken = nodes[0].getToken();
+
+		return { usedTokens, { AST::EType::Typename, std::move(identifierToken), std::move(nodes) } };
+	}
+
+	ParseResult State::parseParameterTypename(std::size_t start, std::size_t end)
+	{
+		PROFILE_FUNC;
+
+		if (start > end)
+			return {};
+
+		std::size_t            usedTokens = 0;
+		std::vector<AST::Node> nodes;
+
 		auto result = parseTypeQualifiers(start + usedTokens, end);
 		usedTokens += result.m_UsedTokens;
 		nodes.emplace_back(std::move(result.m_Node));
@@ -625,7 +646,7 @@ namespace Frertex::Parser
 		usedTokens += result.m_UsedTokens;
 		nodes.emplace_back(std::move(result.m_Node));
 
-		result = parseTypename(start + usedTokens, end);
+		result = parseParameterTypename(start + usedTokens, end);
 		if (result.m_UsedTokens == 0)
 			return {};
 		usedTokens += result.m_UsedTokens;

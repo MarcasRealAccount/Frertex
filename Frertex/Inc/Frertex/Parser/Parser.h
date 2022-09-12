@@ -39,6 +39,7 @@ namespace Frertex::Parser
 		ParseResult parseTypeQualifiers(std::size_t start, std::size_t end);
 		ParseResult parseIdentifier(std::size_t start, std::size_t end);
 		ParseResult parseTypename(std::size_t start, std::size_t end);
+		ParseResult parseParameterTypename(std::size_t start, std::size_t end);
 		ParseResult parseArgument(std::size_t start, std::size_t end);
 		ParseResult parseArguments(std::size_t start, std::size_t end);
 		ParseResult parseAttribute(std::size_t start, std::size_t end);
