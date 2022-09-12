@@ -1,9 +1,32 @@
 #include "Frertex/FIL/TypeID.h"
+#include "Frertex/Utils/Profiler.h"
 
 namespace Frertex::FIL
 {
 	ETypeID StringToBuiltinTypeID(std::string_view str)
 	{
+		PROFILE_FUNC;
+
+		if (str == "Position")
+			return ETypeID::BuiltinPosition;
+		else if (str == "PointSize")
+			return ETypeID::BuiltinPointSize;
+		else if (str == "ClipDistance")
+			return ETypeID::BuiltinClipDistance;
+		else if (str == "CullDistance")
+			return ETypeID::BuiltinCullDistance;
+		else if (str == "VertexIndex")
+			return ETypeID::BuiltinVertexIndex;
+		else if (str == "InstanceIndex")
+			return ETypeID::BuiltinInstanceIndex;
+		else
+			return ETypeID::Void;
+	}
+
+	ETypeID StringToTypeID(std::string_view str)
+	{
+		PROFILE_FUNC;
+
 		if (str == "void")
 			return ETypeID::Void;
 
@@ -80,7 +103,7 @@ namespace Frertex::FIL
 		{
 			rows = str[offset] - '1';
 			++offset;
-			if (str[offset] - offset > 1 && str[offset] == 'x' && str[offset + 1] >= '1' && str[offset + 1] <= '4')
+			if (str.size() - offset > 1 && str[offset] == 'x' && str[offset + 1] >= '1' && str[offset + 1] <= '4')
 			{
 				columns = str[offset + 1] - '1';
 				offset += 2;
@@ -94,6 +117,8 @@ namespace Frertex::FIL
 
 	std::string TypeIDToString(ETypeID type)
 	{
+		PROFILE_FUNC;
+
 		if (type == ETypeID::Void)
 			return "void";
 
@@ -172,17 +197,23 @@ namespace Frertex::FIL
 
 	bool TypeIDIsBuiltin(ETypeID type)
 	{
+		PROFILE_FUNC;
+
 		return static_cast<std::uint64_t>(type) >= 0x8000'0000'0000'0000;
 	}
 
 	bool TypeIDIsUserDefined(ETypeID type)
 	{
+		PROFILE_FUNC;
+
 		return static_cast<std::uint64_t>(type) >= 0x8000'0000 &&
 		       static_cast<std::uint64_t>(type) < 0x8000'0000'0000'0000;
 	}
 
 	ETypeID TypeIDGetBase(ETypeID type)
 	{
+		PROFILE_FUNC;
+
 		std::uint64_t typeID = static_cast<std::uint64_t>(type);
 		if (typeID >= 0x8000'0000)
 			return type;
@@ -202,6 +233,38 @@ namespace Frertex::FIL
 				return static_cast<ETypeID>(((typeID & 0xFFFF) / (columns + 1)) | (typeID & ~0xF0'FFFF));
 			else
 				return static_cast<ETypeID>(((typeID & 0xFFFF) / (columns + 1)) | (typeID & ~0xC0'FFFF));
+		}
+	}
+
+	bool TypeIDIsCorrectForBuiltin(ETypeID type, ETypeID builtin)
+	{
+		PROFILE_FUNC;
+
+		switch (builtin)
+		{
+		case ETypeID::BuiltinPosition: return type == ETypeID::Float4;
+		case ETypeID::BuiltinPointSize: return type == ETypeID::Float;
+		case ETypeID::BuiltinClipDistance: return type == ETypeID::Float;
+		case ETypeID::BuiltinCullDistance: return type == ETypeID::Float;
+		case ETypeID::BuiltinVertexIndex: return type == ETypeID::UInt;
+		case ETypeID::BuiltinInstanceIndex: return type == ETypeID::UInt;
+		default: return false;
+		}
+	}
+
+	ETypeQualifier GetBuiltinTypeQualifier(ETypeID builtin)
+	{
+		PROFILE_FUNC;
+
+		switch (builtin)
+		{
+		case ETypeID::BuiltinPosition: return ETypeQualifier::Out;
+		case ETypeID::BuiltinPointSize: return ETypeQualifier::Out;
+		case ETypeID::BuiltinClipDistance: return ETypeQualifier::Out;
+		case ETypeID::BuiltinCullDistance: return ETypeQualifier::Out;
+		case ETypeID::BuiltinVertexIndex: return ETypeQualifier::In;
+		case ETypeID::BuiltinInstanceIndex: return ETypeQualifier::In;
+		default: return ETypeQualifier::None;
 		}
 	}
 } // namespace Frertex::FIL

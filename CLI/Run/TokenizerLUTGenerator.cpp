@@ -321,7 +321,7 @@ using Callback = ContextualTokenLUT (*)(ECharacterClass characterClass, std::uin
 int main()
 {
 	std::vector<Callback> callbacks = {
-		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT
+		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT // Unknown
 		{
 		    switch (characterClass)
 		    {
@@ -338,16 +338,16 @@ int main()
 				    return { 1, ETokenClass::Symbol };
 		    default: return { 0b10 };
 		    }
-		},
-		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT
+		},                                                                                // Unknown
+		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT // Identifier
 		{
 		    if (characterClass == ECharacterClass::NonDigit ||
 		        characterClass == ECharacterClass::Digit ||
 		        (character & 0b0111'1111) == '_')
 			    return { 1, ETokenClass::Identifier };
 		    return {};
-		},
-		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT
+		},                                                                                // Identifier
+		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT // String
 		{
 		    switch (character & 0b0111'111)
 		    {
@@ -369,8 +369,8 @@ int main()
 		    default:
 			    return { 1, ETokenClass::String };
 		    }
-		},
-		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT
+		},                                                                                // String
+		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT // Integer
 		{
 		    if (characterClass == ECharacterClass::Digit)
 			    return { 1, ETokenClass::Integer };
@@ -401,8 +401,8 @@ int main()
 		    case '\'': return { 1, ETokenClass::Integer };
 		    default: return {};
 		    }
-		},
-		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT
+		},                                                                                // Integer
+		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT // BinaryInteger
 		{
 		    if (characterClass == ECharacterClass::Digit)
 			    return { 1, ETokenClass::BinaryInteger };
@@ -416,8 +416,8 @@ int main()
 		    case '\'': return { 1, ETokenClass::BinaryInteger };
 		    default: return {};
 		    }
-		},
-		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT
+		},                                                                                // BinaryInteger
+		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT // OctalInteger
 		{
 		    if (characterClass == ECharacterClass::Digit)
 			    return { 1, ETokenClass::OctalInteger };
@@ -431,8 +431,8 @@ int main()
 		    case '\'': return { 1, ETokenClass::OctalInteger };
 		    default: return {};
 		    }
-		},
-		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT
+		},                                                                                // OctalInteger
+		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT // HexInteger
 		{
 		    if (characterClass == ECharacterClass::Digit)
 			    return { 1, ETokenClass::HexInteger };
@@ -461,8 +461,8 @@ int main()
 		    case '\'': return { 1, ETokenClass::HexInteger };
 		    default: return {};
 		    }
-		},
-		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT
+		},                                                                                // HexInteger
+		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT // Float
 		{
 		    if (characterClass == ECharacterClass::Digit)
 			    return { 1, ETokenClass::Float };
@@ -477,8 +477,8 @@ int main()
 		    case 'D': return { 1, ETokenClass::Float };
 		    default: return {};
 		    }
-		},
-		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT
+		},                                                                                // Float
+		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT // HexFloat
 		{
 		    if (characterClass == ECharacterClass::Digit)
 			    return { 1, ETokenClass::HexFloat };
@@ -501,12 +501,12 @@ int main()
 		    case 'H': return { 1, ETokenClass::HexFloat };
 		    default: return {};
 		    }
-		},
-		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT
+		},                                                                                // HexFloat
+		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT // LastSymbol
 		{
 		    return {};
-		},
-		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT
+		},                                                                                // LastSymbol
+		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT // Preprocessor
 		{
 		    // TODO(MarcasRealAccount): Enable this:
 		    /*switch (character & 0b0111'111)
@@ -527,8 +527,8 @@ int main()
 		    if ((character & 0b0111'1111) == '\n')
 			    return {};
 		    return { 1, ETokenClass::Preprocessor };
-		},
-		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT
+		},                                                                                // Preprocessor
+		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT // Comment
 		{
 		    if ((character & 0b1000'0000) && (character & 0b0111'1111) == '*')
 			    return { 1, ETokenClass::MultilineComment };
@@ -536,8 +536,8 @@ int main()
 		    if ((character & 0b0111'1111) == '\n')
 			    return {};
 		    return { 1, ETokenClass::Comment };
-		},
-		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT
+		},                                                                                // Comment
+		[](ECharacterClass characterClass, std::uint16_t character) -> ContextualTokenLUT // MultilineComment
 		{
 		    switch (character & 0b0111'111)
 		    {
@@ -565,7 +565,7 @@ int main()
 				    return { 1, ETokenClass::MultilineComment };
 		    default: return { 1, ETokenClass::MultilineComment };
 		    }
-		}
+		} // MultilineComment
 	};
 
 	std::cout << "static constexpr ContextualTokenLUT s_ContextualTokenLUT[13][256] =\n{\n";

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "TypeQualifier.h"
+
 #include <cstdint>
 
 #include <string>
@@ -227,14 +229,22 @@ namespace Frertex::FIL
 		BuiltinBegin    = 0x8000'0000,
 		BuiltinPosition = 0x8000'0000,
 		BuiltinPointSize,
+		BuiltinClipDistance,
+		BuiltinCullDistance,
+		BuiltinVertexIndex,
+		BuiltinInstanceIndex,
 
 		UserDefinedBegin = 0x8000'0000'0000'0000
 	};
 
 	ETypeID StringToBuiltinTypeID(std::string_view str);
+	ETypeID StringToTypeID(std::string_view str);
 
 	std::string TypeIDToString(ETypeID type);
 	bool        TypeIDIsBuiltin(ETypeID type);
 	bool        TypeIDIsUserDefined(ETypeID type);
 	ETypeID     TypeIDGetBase(ETypeID type);
+
+	bool           TypeIDIsCorrectForBuiltin(ETypeID type, ETypeID builtin);
+	ETypeQualifier GetBuiltinTypeQualifier(ETypeID builtin);
 } // namespace Frertex::FIL

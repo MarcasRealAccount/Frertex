@@ -7,6 +7,8 @@ layout(location = 0) out vec2 outUV;
 
 void main()
 {
+	uint v = gl_VertexIndex;
+
 	gl_Position = vec4(inPosition.xyz, 1.0f);
-	outUV       = vec2(inPosition.w, inNormal.w);
+	outUV       = vec2(inPosition.w + float(v), inNormal.w);
 }

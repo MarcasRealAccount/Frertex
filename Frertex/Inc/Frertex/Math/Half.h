@@ -107,8 +107,8 @@ struct std::numeric_limits<Frertex::Math::Half>
 	static constexpr bool                    tinyness_before   = false;
 
 	static constexpr Frertex::Math::Half min() noexcept { return std::bit_cast<Frertex::Math::Half>(static_cast<std::uint16_t>(0b0'00001'0000000000)); }
-	static constexpr Frertex::Math::Half lowest() noexcept { -max(); }
 	static constexpr Frertex::Math::Half max() noexcept { return std::bit_cast<Frertex::Math::Half>(static_cast<std::uint16_t>(0b0'11110'1111111111)); }
+	static constexpr Frertex::Math::Half lowest() noexcept { return -max(); }
 	static constexpr Frertex::Math::Half epsilon() noexcept { return std::bit_cast<Frertex::Math::Half>(static_cast<std::uint16_t>(0b0'00000'0000000000)); }
 	static constexpr Frertex::Math::Half round_error() noexcept { return std::bit_cast<Frertex::Math::Half>(static_cast<std::uint16_t>(0b0'01110'0000000000)); }
 	static constexpr Frertex::Math::Half infinity() noexcept { return std::bit_cast<Frertex::Math::Half>(static_cast<std::uint16_t>(0b0'11111'0000000000)); }
@@ -137,7 +137,7 @@ namespace Frertex::Math
 
 		std::uint32_t fraction = fp32 & 0x7F'FFFF;
 
-		m_Value = sign << (FractionBits + ExponentBits) | (exponent + 15) << FractionBits | (fraction >> (23 - FractionBits));
+		m_Value = static_cast<std::uint16_t>(sign << (FractionBits + ExponentBits) | (exponent + 15) << FractionBits | (fraction >> (23 - FractionBits)));
 	}
 
 	constexpr Half::Half(double value) noexcept
@@ -158,7 +158,7 @@ namespace Frertex::Math
 
 		std::uint64_t fraction = fp64 & 0xF'FFFF'FFFF'FFFF;
 
-		m_Value = sign << (FractionBits + ExponentBits) | (exponent + 15) << FractionBits | (fraction >> 52 - FractionBits);
+		m_Value = static_cast<std::uint16_t>(sign << (FractionBits + ExponentBits) | (exponent + 15) << FractionBits | (fraction >> (52 - FractionBits)));
 	}
 
 	constexpr std::int32_t Half::toInt() const
@@ -177,12 +177,12 @@ namespace Frertex::Math
 		{
 			if (fraction == 0)
 				return std::bit_cast<float>(fp32 | 0b11111111'00000000000000000000000);
-			return std::bit_cast<float>(fp32 | 0b11111111'00000000000000000000000 | fraction << 23 - FractionBits);
+			return std::bit_cast<float>(fp32 | 0b11111111'00000000000000000000000 | fraction << (23 - FractionBits));
 		}
 
 		std::uint8_t exponent = biasedExponent - ExponentBias + 127;
 		fp32 |= exponent << 23;
-		fp32 |= fraction << 23 - FractionBits;
+		fp32 |= fraction << (23 - FractionBits);
 		return std::bit_cast<float>(fp32);
 	}
 
@@ -190,19 +190,19 @@ namespace Frertex::Math
 	{
 		std::uint8_t  biasedExponent = getBiasedExponent();
 		std::uint64_t fraction       = getFraction();
-		std::uint64_t fp64           = getSign() << 63;
+		std::uint64_t fp64           = static_cast<std::uint64_t>(getSign()) << 63;
 		if (biasedExponent == 0 && fraction == 0)
 			return std::bit_cast<double>(fp64);
 		if (biasedExponent == 0b11111)
 		{
 			if (fraction == 0)
 				return std::bit_cast<double>(fp64 | 0b11111111111'0000000000000000000000000000000000000000000000000000);
-			return std::bit_cast<double>(fp64 | 0b11111111111'0000000000000000000000000000000000000000000000000000 | fraction << 52 - FractionBits);
+			return std::bit_cast<double>(fp64 | 0b11111111111'0000000000000000000000000000000000000000000000000000 | fraction << (52 - FractionBits));
 		}
 
-		std::uint16_t exponent = biasedExponent - ExponentBias + 1023;
+		std::uint64_t exponent = biasedExponent - ExponentBias + 1023;
 		fp64 |= exponent << 52;
-		fp64 |= fraction << 52 - FractionBits;
+		fp64 |= fraction << (52 - FractionBits);
 		return std::bit_cast<double>(fp64);
 	}
 } // namespace Frertex::Math
