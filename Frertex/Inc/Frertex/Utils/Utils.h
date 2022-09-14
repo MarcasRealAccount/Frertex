@@ -1,5 +1,8 @@
 #pragma once
 
+#include "Core.h"
+
+#include <bit>
 #include <chrono>
 #include <string>
 #include <unordered_map>
@@ -33,4 +36,14 @@ namespace Frertex::Utils
 	};
 
 	std::string EscapeString(Utils::CopyMovable<std::string>&& str);
+
+	template <class To, class From>
+	[[nodiscard]] constexpr To BitCast(const From& from) noexcept
+	{
+#if BUILD_IS_SYSTEM_MACOSX
+		return __builtin_bit_cast(To, from);
+#else
+		return std::bit_cast<To, From>(from);
+#endif
+	}
 } // namespace Frertex::Utils

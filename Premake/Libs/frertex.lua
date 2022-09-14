@@ -21,6 +21,10 @@ function frertex:setup()
 		self.location .. "/Inc/**",
 		self.location .. "/Src/**"
 	})
+	removefiles({
+		self.location .. "/Inc/Old/**",
+		self.location .. "/Src/Old/**"
+	})
 
 	libs.fmt:setupDep()
 end

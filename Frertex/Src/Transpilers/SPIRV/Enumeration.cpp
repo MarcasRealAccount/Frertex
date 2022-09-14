@@ -115,8 +115,7 @@ namespace Frertex::Transpilers::SPIRV
 		case ECapability::FPFastMathModeINTEL: return b == ECapability::Kernel;
 		case ECapability::DotProductInput4x8Bit: return b == ECapability::Int8;
 		case ECapability::GroupNonUniformRotateKHR: return b == ECapability::GroupNonUniform;
+		default: return false;
 		}
-
-		return false;
 	}
 } // namespace Frertex::Transpilers::SPIRV

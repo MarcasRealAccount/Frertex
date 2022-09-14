@@ -3,6 +3,8 @@
 
 #include <fmt/format.h>
 
+#include <sstream>
+
 namespace Frertex::Message
 {
 	std::string_view MessageTypeToString(EMessageType type)

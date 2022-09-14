@@ -1,8 +1,8 @@
 #pragma once
 
-#include <cstdint>
+#include "Utils.h"
 
-#include <bit>
+#include <cstdint>
 
 namespace Frertex::Utils
 {
@@ -20,10 +20,10 @@ namespace Frertex::Utils
 	public:
 		constexpr Version() : m_Version(0) {}
 		constexpr Version(std::uint32_t version) : m_Version(version) {}
-		constexpr Version(std::uint32_t major, std::uint32_t minor, std::uint32_t patch) : m_Version(std::bit_cast<std::uint32_t>(SubVersions { patch, minor, major })) {}
+		constexpr Version(std::uint32_t major, std::uint32_t minor, std::uint32_t patch) : m_Version(BitCast<std::uint32_t>(SubVersions { patch, minor, major })) {}
 
 		constexpr operator std::uint32_t() const { return m_Version; }
-		constexpr operator SubVersions() const { return std::bit_cast<SubVersions>(m_Version); }
+		constexpr operator SubVersions() const { return BitCast<SubVersions>(m_Version); }
 
 	public:
 		std::uint32_t m_Version;

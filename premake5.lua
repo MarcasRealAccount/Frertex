@@ -45,7 +45,10 @@ workspace("Frertex")
 
 		includedirs({ "%{prj.location}/Src/" })
 		files({ "%{prj.location}/Src/**" })
-		removefiles({ "*.DS_Store" })
+		removefiles({
+			"%{prj.location}/Src/OldMain.cpp",
+			"*.DS_Store"
+		})
 
 		libs.frertex:setupDep()
 

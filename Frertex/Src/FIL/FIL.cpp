@@ -28,7 +28,7 @@ namespace Frertex::FIL
 			return {};
 
 		const char* start = reinterpret_cast<const char*>(m_Strings.data() + function->m_NameOffset);
-		return { start, start + function->m_NameLength };
+		return std::string_view(start, function->m_NameLength);
 	}
 
 	const Type* Binary::getType(std::uint64_t id) const
