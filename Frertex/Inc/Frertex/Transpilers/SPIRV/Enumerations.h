@@ -730,7 +730,7 @@ namespace Frertex::Transpilers::SPIRV
 		Float64,
 		Int64,
 		Int64Atomics,
-		ImageBasics,
+		ImageBasic,
 		ImageReadWrite,
 		ImageMipmap,
 		Pipes = 17,
@@ -745,7 +745,7 @@ namespace Frertex::Transpilers::SPIRV
 		StorageImageMultisample = 27,
 		UniformBufferArrayDynamicIndexing,
 		SampledImageArrayDynamicIndexing,
-		StoageBufferArraDynamicIndexing,
+		StorageBufferArrayDynamicIndexing,
 		StorageImageArrayDynamicIndexing,
 		ClipDistance,
 		CullDistance,
@@ -790,7 +790,7 @@ namespace Frertex::Transpilers::SPIRV
 		FragmentShadingRateKHR           = 4422,
 		SubgroupBallotKHR                = 4423,
 		DrawParameters                   = 4427,
-		WorkgroupMemoryExplicitLayourKHR = 4428,
+		WorkgroupMemoryExplicitLayoutKHR = 4428,
 		WorkgroupMemoryExplicitLayout8BitAccessKHR,
 		WorkgroupMemoryExplicitLayout16BitAccessKHR,
 		SubgroupVoteKHR,
@@ -804,9 +804,9 @@ namespace Frertex::Transpilers::SPIRV
 		MultiView                     = 4439,
 		VariablePointersStorageBuffer = 4441,
 		VariablePointers,
-		AtomicStorageOps             = 4445,
-		SampleMNaskPostDepthCoverage = 4447,
-		StorageBuffer8BitAccess      = 4448,
+		AtomicStorageOps            = 4445,
+		SampleMaskPostDepthCoverage = 4447,
+		StorageBuffer8BitAccess     = 4448,
 		UniformAndStorageBuffer8BitAccess,
 		StoragePushConstant8,
 		DenormPreserve = 4464,
@@ -814,7 +814,7 @@ namespace Frertex::Transpilers::SPIRV
 		SignedZeroInfNanPreserve,
 		RoundingModeRTE,
 		RoundingModeRTZ,
-		RayQuerytProvisionalKHR = 4471,
+		RayQueryProvisionalKHR = 4471,
 		RayQueryKHR,
 		RayTraversalPrimitiveCullingKHR = 4478,
 		RayTracingKHR,
@@ -871,8 +871,8 @@ namespace Frertex::Transpilers::SPIRV
 		VulkanMemoryModelKHR                  = 5345,
 		VulkanMemoryModelDeviceScope          = 5346,
 		VulkanMemoryModelDeviceScopeKHR       = 5346,
-		PhysicalStorageBufferAddressing       = 5347,
-		PhysicalStorageBufferAddressingEXT    = 5347,
+		PhysicalStorageBufferAddresses        = 5347,
+		PhysicalStorageBufferAddressesEXT     = 5347,
 		ComputeDerivativeGroupLinearNV        = 5350,
 		RayTracingProvisionalKHR              = 5353,
 		CooperativeMatrixNV                   = 5357,
@@ -941,6 +941,8 @@ namespace Frertex::Transpilers::SPIRV
 		SplitBarrierINTEL         = 6141,
 		GroupUniformArithmeticKHR = 6400
 	};
+
+	bool IsCapabilityImplicit(ECapability a, ECapability b);
 
 	enum class EReservedRayFlags : std::uint32_t
 	{

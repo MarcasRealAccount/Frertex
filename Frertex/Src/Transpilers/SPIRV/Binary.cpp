@@ -1,5 +1,4 @@
 #include "Frertex/Transpilers/SPIRV/Binary.h"
-#include "Frertex/Transpilers/SPIRV/CodeBuffer.h"
 #include "Frertex/Utils/Buffer.h"
 #include "Frertex/Utils/Profiler.h"
 
@@ -7,6 +6,35 @@
 
 namespace Frertex::Transpilers::SPIRV
 {
+	void Binary::requireCapabilities(const CodeBuffer& codeBuffer)
+	{
+		m_Capabilities.reserve(m_Capabilities.size() + codeBuffer.getCapabilities().size());
+		for (auto capability : codeBuffer.getCapabilities())
+			m_Capabilities.emplace_back(capability);
+
+		removeImplicitCapabilities(codeBuffer.getCapabilities().size());
+	}
+
+	void Binary::removeImplicitCapabilities(std::size_t addedCapabilities)
+	{
+		std::size_t start = addedCapabilities < m_Capabilities.size() ? m_Capabilities.size() - addedCapabilities : 0;
+		for (; start < m_Capabilities.size(); ++start)
+		{
+			for (std::size_t i = 0; i < m_Capabilities.size(); ++i)
+			{
+				if (i == start)
+					continue;
+
+				if (!IsCapabilityImplicit(m_Capabilities[start], m_Capabilities[i]))
+					continue;
+
+				m_Capabilities.erase(m_Capabilities.begin() + i);
+				--start;
+				--i;
+			}
+		}
+	}
+
 	std::vector<std::uint8_t> Binary::toBinary() const
 	{
 		PROFILE_FUNC;
@@ -31,8 +59,6 @@ namespace Frertex::Transpilers::SPIRV
 
 		headerCode.OpMemoryModel(m_AddressingMode, m_MemoryModel);
 		buffer.pushU32s(headerCode.begin(), headerCode.end());
-
-
 
 		return buffer.get();
 	}
