@@ -262,7 +262,7 @@ namespace Frertex::Transpilers::SPIRV
 		PROFILE_FUNC;
 
 		m_Buffer.emplace_back(0x0002'0011);
-		m_Buffer.emplace_back(capability);
+		m_Buffer.emplace_back(static_cast<std::uint32_t>(capability));
 	}
 
 	void CodeBuffer::OpExecutionModeId(std::uint32_t entryPoint, EExecutionMode executionMode, const std::vector<std::uint32_t>& operandIDs)
