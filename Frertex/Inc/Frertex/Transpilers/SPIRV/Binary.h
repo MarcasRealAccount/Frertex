@@ -12,15 +12,10 @@ namespace Frertex::Transpilers::SPIRV
 	struct Binary
 	{
 	public:
-		void requireExtension(std::string_view extension) { m_Extensions.emplace_back(std::string { extension }); }
+		void requireExtension(std::string_view extension) { m_Extensions.insert(std::string { extension }); }
 		void importInstructions(std::string_view instructions) { m_ExtInstImports.emplace_back(reserveID(instructions), std::string { instructions }); }
-		void requireCapability(ECapability capability)
-		{
-			m_Capabilities.emplace_back(capability);
-			removeImplicitCapabilities(1);
-		}
-		void requireCapabilities(const CodeBuffer& codeBuffer);
-		void removeImplicitCapabilities(std::size_t addedCapabilities = ~0ULL);
+		void requireCapability(ECapability capability) { m_Capabilities.insert(capability); }
+		void require(const CodeBuffer& codeBuffer);
 
 		std::vector<std::uint8_t> toBinary() const;
 
@@ -43,12 +38,12 @@ namespace Frertex::Transpilers::SPIRV
 		}
 
 	public:
-		std::vector<std::string>                           m_Extensions;
+		std::set<std::string>                              m_Extensions;
 		std::vector<std::pair<std::uint32_t, std::string>> m_ExtInstImports;
-		std::vector<ECapability>                           m_Capabilities;
+		std::set<ECapability>                              m_Capabilities;
 
-		EAddressingMode m_AddressingMode = EAddressingMode::Logical;
-		EMemoryModel    m_MemoryModel    = EMemoryModel::Vulkan;
+		EAddressingModel m_AddressingModel = EAddressingModel::Logical;
+		EMemoryModel     m_MemoryModel     = EMemoryModel::Vulkan;
 
 		std::uint32_t m_IDBound = 1;
 

@@ -6,33 +6,13 @@
 
 namespace Frertex::Transpilers::SPIRV
 {
-	void Binary::requireCapabilities(const CodeBuffer& codeBuffer)
+	void Binary::require(const CodeBuffer& codeBuffer)
 	{
-		m_Capabilities.reserve(m_Capabilities.size() + codeBuffer.getCapabilities().size());
 		for (auto capability : codeBuffer.getCapabilities())
-			m_Capabilities.emplace_back(capability);
+			m_Capabilities.insert(capability);
 
-		removeImplicitCapabilities(codeBuffer.getCapabilities().size());
-	}
-
-	void Binary::removeImplicitCapabilities(std::size_t addedCapabilities)
-	{
-		std::size_t start = addedCapabilities < m_Capabilities.size() ? m_Capabilities.size() - addedCapabilities : 0;
-		for (; start < m_Capabilities.size(); ++start)
-		{
-			for (std::size_t i = 0; i < m_Capabilities.size(); ++i)
-			{
-				if (i == start)
-					continue;
-
-				if (!IsCapabilityImplicit(m_Capabilities[start], m_Capabilities[i]))
-					continue;
-
-				m_Capabilities.erase(m_Capabilities.begin() + i);
-				--start;
-				--i;
-			}
-		}
+		for (auto& extension : codeBuffer.getExtensions())
+			m_Extensions.insert(extension);
 	}
 
 	std::vector<std::uint8_t> Binary::toBinary() const
@@ -47,17 +27,31 @@ namespace Frertex::Transpilers::SPIRV
 		buffer.pushU32(m_IDBound);
 		buffer.pushU32(0x00000000); // Reserved
 
-		CodeBuffer headerCode;
+		std::set<ECapability> implicitCapabilities;
+		std::set<std::string> requiredExtensions;
+		std::set<ECapability> capabilities = m_Capabilities;
+
+		RequireCapExtAddressingModel(m_AddressingModel, capabilities, requiredExtensions);
+		RequireCapExtMemoryModel(m_MemoryModel, capabilities, requiredExtensions);
 		for (auto capability : m_Capabilities)
+			RequireCapExtCapability(capability, implicitCapabilities, requiredExtensions);
+
+		for (auto implicitCapability : implicitCapabilities)
+			capabilities.erase(implicitCapability);
+		for (auto& extension : m_Extensions)
+			requiredExtensions.insert(extension);
+
+		CodeBuffer headerCode;
+		for (auto capability : capabilities)
 			headerCode.OpCapability(capability);
 
-		for (auto& extension : m_Extensions)
+		for (auto& extension : requiredExtensions)
 			headerCode.OpExtension(extension);
 
 		for (auto& instructions : m_ExtInstImports)
 			headerCode.OpExtInstImport(instructions.first, instructions.second);
 
-		headerCode.OpMemoryModel(m_AddressingMode, m_MemoryModel);
+		headerCode.OpMemoryModel(m_AddressingModel, m_MemoryModel);
 		buffer.pushU32s(headerCode.begin(), headerCode.end());
 
 		return buffer.get();

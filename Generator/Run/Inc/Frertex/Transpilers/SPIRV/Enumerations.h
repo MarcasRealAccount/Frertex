@@ -2,8 +2,143 @@
 
 #include <cstdint>
 
+#include <set>
+#include <string>
+
 namespace Frertex::Transpilers::SPIRV
 {
+	enum class EImageOperands : std::uint32_t
+	{
+		None = 0x0000'0000,
+		Bias = 0x0000'0001,
+		Lod = 0x0000'0002,
+		Grad = 0x0000'0004,
+		ConstOffset = 0x0000'0008,
+		Offset = 0x0000'0010,
+		ConstOffsets = 0x0000'0020,
+		Sample = 0x0000'0040,
+		MinLod = 0x0000'0080,
+		MakeTexelAvailable = 0x0000'0100,
+		MakeTexelVisible = 0x0000'0200,
+		NonPrivateTexel = 0x0000'0400,
+		VolatileTexel = 0x0000'0800,
+		SignExtend = 0x0000'1000,
+		ZeroExtend = 0x0000'2000,
+		Nontemporal = 0x0000'4000,
+		Offsets = 0x0001'0000
+	};
+
+	enum class EFPFastMathMode : std::uint32_t
+	{
+		None = 0x0000'0000,
+		NotNaN = 0x0000'0001,
+		NotInf = 0x0000'0002,
+		NSZ = 0x0000'0004,
+		AllowRecip = 0x0000'0008,
+		Fast = 0x0000'0010,
+		AllowContractFastINTEL = 0x0001'0000,
+		AllowReassocINTEL = 0x0002'0000
+	};
+
+	enum class ESelectionControl : std::uint32_t
+	{
+		None = 0x0000'0000,
+		Flatten = 0x0000'0001,
+		DontFlatten = 0x0000'0002
+	};
+
+	enum class ELoopControl : std::uint32_t
+	{
+		None = 0x0000'0000,
+		Unroll = 0x0000'0001,
+		DontUnroll = 0x0000'0002,
+		DependencyInfinite = 0x0000'0004,
+		DependencyLength = 0x0000'0008,
+		MinIterations = 0x0000'0010,
+		MaxIterations = 0x0000'0020,
+		IterationMultiple = 0x0000'0040,
+		PeelCount = 0x0000'0080,
+		PartialCount = 0x0000'0100,
+		InitiationIntervalINTEL = 0x0001'0000,
+		MaxConcurrencyINTEL = 0x0002'0000,
+		DependencyArrayINTEL = 0x0004'0000,
+		PipelineEnableINTEL = 0x0008'0000,
+		LoopCoalesceINTEL = 0x0010'0000,
+		MaxInterleavingINTEL = 0x0020'0000,
+		SpeculatedIterationsINTEL = 0x0040'0000,
+		NoFusionINTEL = 0x0080'0000
+	};
+
+	enum class EFunctionControl : std::uint32_t
+	{
+		None = 0x0000'0000,
+		Inline = 0x0000'0001,
+		DontInline = 0x0000'0002,
+		Pure = 0x0000'0004,
+		Const = 0x0000'0008,
+		OptNoneINTEL = 0x0001'0000
+	};
+
+	enum class EMemorySemantics : std::uint32_t
+	{
+		Acquire = 0x0000'0002,
+		Release = 0x0000'0004,
+		AcquireRelease = 0x0000'0008,
+		SequentiallyConsistent = 0x0000'0010,
+		UniformMemory = 0x0000'0040,
+		SubgroupMemory = 0x0000'0080,
+		WorkgroupMemory = 0x0000'0100,
+		CrossWorkgroupMemory = 0x0000'0200,
+		AtomicCounterMemory = 0x0000'0400,
+		ImageMemory = 0x0000'0800,
+		OutputMemory = 0x0000'1000,
+		MakeAvailable = 0x0000'2000,
+		MakeVisible = 0x0000'4000,
+		Volatile = 0x0000'8000
+	};
+
+	enum class EMemoryAccess : std::uint32_t
+	{
+		None = 0x0000'0000,
+		Volatile = 0x0000'0001,
+		Aligned = 0x0000'0002,
+		Nontemporal = 0x0000'0004,
+		MakePointerAvailable = 0x0000'0008,
+		MakePointerVisible = 0x0000'0010,
+		NonPrivatePointer = 0x0000'0020,
+		AliasScopeINTELMask = 0x0001'0000,
+		NoAliasINTELMask = 0x0002'0000
+	};
+
+	enum class EKernelProfilingInfo : std::uint32_t
+	{
+		None = 0x0000'0000,
+		CmdExecTime = 0x0000'0001
+	};
+
+	enum class ERayFlags : std::uint32_t
+	{
+		NoneKHR = 0x0000'0000,
+		OpaqueKHR = 0x0000'0001,
+		NoOpaqueKHR = 0x0000'0002,
+		TerminateOnFirstHitKHR = 0x0000'0004,
+		SkipClosestHitShaderKHR = 0x0000'0008,
+		CullBackFacingTrianglesKHR = 0x0000'0010,
+		CullFrontFacingTrianglesKHR = 0x0000'0020,
+		CullOpaqueKHR = 0x0000'0040,
+		CullNoOpaqueKHR = 0x0000'0080,
+		SkipTrianglesKHR = 0x0000'0100,
+		SkipAABBsKHR = 0x0000'0200
+	};
+
+	enum class EFragmentShadingRate : std::uint32_t
+	{
+		Vertical2Pixels = 0x0000'0001,
+		Vertical4Pixels = 0x0000'0002,
+		Horizontal2Pixels = 0x0000'0004,
+		Horizontal4Pixels = 0x0000'0008
+	};
+
 	enum class ESourceLanguage : std::uint32_t
 	{
 		Unknown = 0,
@@ -13,9 +148,8 @@ namespace Frertex::Transpilers::SPIRV
 		OpenCL_CPP = 4,
 		HLSL = 5,
 		CPP_for_OpenCL = 6,
-		SYCL = 7	}
-
-	void RequireCapExtSourceLanguage(ESourceLanguage value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		SYCL = 7
+	};
 
 	enum class EExecutionModel : std::uint32_t
 	{
@@ -28,42 +162,25 @@ namespace Frertex::Transpilers::SPIRV
 		Kernel = 6,
 		TaskNV = 5267,
 		MeshNV = 5268,
-		RayGenerationNV = 5313,
-		RayGenerationKHR = 5313,
-		IntersectionNV = 5314,
-		IntersectionKHR = 5314,
-		AnyHitNV = 5315,
-		AnyHitKHR = 5315,
-		ClosestHitNV = 5316,
-		ClosestHitKHR = 5316,
-		MissNV = 5317,
-		MissKHR = 5317,
-		CallableNV = 5318,
-		CallableKHR = 5318,
 		TaskEXT = 5364,
-		MeshEXT = 5365	}
-
-	void RequireCapExtExecutionModel(EExecutionModel value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		MeshEXT = 5365
+	};
 
 	enum class EAddressingModel : std::uint32_t
 	{
 		Logical = 0,
 		Physical32 = 1,
 		Physical64 = 2,
-		PhysicalStorageBuffer64 = 5348,
-		PhysicalStorageBuffer64EXT = 5348	}
-
-	void RequireCapExtAddressingModel(EAddressingModel value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		PhysicalStorageBuffer64 = 5348
+	};
 
 	enum class EMemoryModel : std::uint32_t
 	{
 		Simple = 0,
 		GLSL450 = 1,
 		OpenCL = 2,
-		Vulkan = 3,
-		VulkanKHR = 3	}
-
-	void RequireCapExtMemoryModel(EMemoryModel value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		Vulkan = 3
+	};
 
 	enum class EExecutionMode : std::uint32_t
 	{
@@ -120,14 +237,8 @@ namespace Frertex::Transpilers::SPIRV
 		StencilRefUnchangedBackAMD = 5082,
 		StencilRefGreaterBackAMD = 5083,
 		StencilRefLessBackAMD = 5084,
-		OutputLinesNV = 5269,
-		OutputLinesEXT = 5269,
-		OutputPrimitivesNV = 5270,
-		OutputPrimitivesEXT = 5270,
 		DerivativeGroupQuadsNV = 5289,
 		DerivativeGroupLinearNV = 5290,
-		OutputTrianglesNV = 5298,
-		OutputTrianglesEXT = 5298,
 		PixelInterlockOrderedEXT = 5366,
 		PixelInterlockUnorderedEXT = 5367,
 		SampleInterlockOrderedEXT = 5368,
@@ -144,9 +255,8 @@ namespace Frertex::Transpilers::SPIRV
 		NoGlobalOffsetINTEL = 5895,
 		NumSIMDWorkitemsINTEL = 5896,
 		SchedulerTargetFmaxMhzINTEL = 5903,
-		NamedBarrierCountINTEL = 6417	}
-
-	void RequireCapExtExecutionMode(EExecutionMode value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		NamedBarrierCountINTEL = 6417
+	};
 
 	enum class EStorageClass : std::uint32_t
 	{
@@ -163,38 +273,23 @@ namespace Frertex::Transpilers::SPIRV
 		AtomicCounter = 10,
 		Image = 11,
 		StorageBuffer = 12,
-		CallableDataNV = 5328,
-		CallableDataKHR = 5328,
-		IncomingCallableDataNV = 5329,
-		IncomingCallableDataKHR = 5329,
-		RayPayloadNV = 5338,
-		RayPayloadKHR = 5338,
-		HitAttributeNV = 5339,
-		HitAttributeKHR = 5339,
-		IncomingRayPayloadNV = 5342,
-		IncomingRayPayloadKHR = 5342,
-		ShaderRecordBufferNV = 5343,
-		ShaderRecordBufferKHR = 5343,
 		PhysicalStorageBuffer = 5349,
-		PhysicalStorageBufferEXT = 5349,
 		TaskPayloadWorkgroupEXT = 5402,
 		CodeSectionINTEL = 5605,
 		DeviceOnlyINTEL = 5936,
-		HostOnlyINTEL = 5937	}
-
-	void RequireCapExtStorageClass(EStorageClass value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		HostOnlyINTEL = 5937
+	};
 
 	enum class EDim : std::uint32_t
 	{
-		1D = 0,
-		2D = 1,
-		3D = 2,
+		_1D = 0,
+		_2D = 1,
+		_3D = 2,
 		Cube = 3,
 		Rect = 4,
 		Buffer = 5,
-		SubpassData = 6	}
-
-	void RequireCapExtDim(EDim value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		SubpassData = 6
+	};
 
 	enum class ESamplerAddressingMode : std::uint32_t
 	{
@@ -202,16 +297,14 @@ namespace Frertex::Transpilers::SPIRV
 		ClampToEdge = 1,
 		Clamp = 2,
 		Repeat = 3,
-		RepeatMirrored = 4	}
-
-	void RequireCapExtSamplerAddressingMode(ESamplerAddressingMode value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		RepeatMirrored = 4
+	};
 
 	enum class ESamplerFilterMode : std::uint32_t
 	{
 		Nearest = 0,
-		Linear = 1	}
-
-	void RequireCapExtSamplerFilterMode(ESamplerFilterMode value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		Linear = 1
+	};
 
 	enum class EImageFormat : std::uint32_t
 	{
@@ -256,9 +349,8 @@ namespace Frertex::Transpilers::SPIRV
 		R16ui = 38,
 		R8ui = 39,
 		R64ui = 40,
-		R64i = 41	}
-
-	void RequireCapExtImageFormat(EImageFormat value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		R64i = 41
+	};
 
 	enum class EImageChannelOrder : std::uint32_t
 	{
@@ -281,9 +373,8 @@ namespace Frertex::Transpilers::SPIRV
 		sRGBx = 16,
 		sRGBA = 17,
 		sBGRA = 18,
-		ABGR = 19	}
-
-	void RequireCapExtImageChannelOrder(EImageChannelOrder value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		ABGR = 19
+	};
 
 	enum class EImageChannelDataType : std::uint32_t
 	{
@@ -303,25 +394,22 @@ namespace Frertex::Transpilers::SPIRV
 		HalfFloat = 13,
 		Float = 14,
 		UnormInt24 = 15,
-		UnormInt101010_2 = 16	}
-
-	void RequireCapExtImageChannelDataType(EImageChannelDataType value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		UnormInt101010_2 = 16
+	};
 
 	enum class EFPRoundingMode : std::uint32_t
 	{
 		RTE = 0,
 		RTZ = 1,
 		RTP = 2,
-		RTN = 3	}
-
-	void RequireCapExtFPRoundingMode(EFPRoundingMode value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		RTN = 3
+	};
 
 	enum class EFPDenormMode : std::uint32_t
 	{
 		Preserve = 0,
-		FlushToZero = 1	}
-
-	void RequireCapExtFPDenormMode(EFPDenormMode value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		FlushToZero = 1
+	};
 
 	enum class EQuantizationModes : std::uint32_t
 	{
@@ -332,41 +420,36 @@ namespace Frertex::Transpilers::SPIRV
 		RND_INF = 4,
 		RND_MIN_INF = 5,
 		RND_CONV = 6,
-		RND_CONV_ODD = 7	}
-
-	void RequireCapExtQuantizationModes(EQuantizationModes value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		RND_CONV_ODD = 7
+	};
 
 	enum class EFPOperationMode : std::uint32_t
 	{
 		IEEE = 0,
-		ALT = 1	}
-
-	void RequireCapExtFPOperationMode(EFPOperationMode value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		ALT = 1
+	};
 
 	enum class EOverflowModes : std::uint32_t
 	{
 		WRAP = 0,
 		SAT = 1,
 		SAT_ZERO = 2,
-		SAT_SYM = 3	}
-
-	void RequireCapExtOverflowModes(EOverflowModes value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		SAT_SYM = 3
+	};
 
 	enum class ELinkageType : std::uint32_t
 	{
 		Export = 0,
 		Import = 1,
-		LinkOnceODR = 2	}
-
-	void RequireCapExtLinkageType(ELinkageType value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		LinkOnceODR = 2
+	};
 
 	enum class EAccessQualifier : std::uint32_t
 	{
 		ReadOnly = 0,
 		WriteOnly = 1,
-		ReadWrite = 2	}
-
-	void RequireCapExtAccessQualifier(EAccessQualifier value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		ReadWrite = 2
+	};
 
 	enum class EFunctionParameterAttribute : std::uint32_t
 	{
@@ -377,9 +460,8 @@ namespace Frertex::Transpilers::SPIRV
 		NoAlias = 4,
 		NoCapture = 5,
 		NoWrite = 6,
-		NoReadWrite = 7	}
-
-	void RequireCapExtFunctionParameterAttribute(EFunctionParameterAttribute value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		NoReadWrite = 7
+	};
 
 	enum class EDecoration : std::uint32_t
 	{
@@ -437,18 +519,12 @@ namespace Frertex::Transpilers::SPIRV
 		PassthroughNV = 5250,
 		ViewportRelativeNV = 5252,
 		SecondaryViewportRelativeNV = 5256,
-		PerPrimitiveNV = 5271,
-		PerPrimitiveEXT = 5271,
 		PerViewNV = 5272,
 		PerTaskNV = 5273,
 		PerVertexKHR = 5285,
-		PerVertexNV = 5285,
 		NonUniform = 5300,
-		NonUniformEXT = 5300,
 		RestrictPointer = 5355,
-		RestrictPointerEXT = 5355,
 		AliasedPointer = 5356,
-		AliasedPointerEXT = 5356,
 		BindlessSamplerNV = 5398,
 		BindlessImageNV = 5399,
 		BoundSamplerNV = 5400,
@@ -462,10 +538,6 @@ namespace Frertex::Transpilers::SPIRV
 		VectorComputeFunctionINTEL = 5626,
 		StackCallINTEL = 5627,
 		GlobalVariableOffsetINTEL = 5628,
-		CounterBuffer = 5634,
-		HlslCounterBufferGOOGLE = 5634,
-		UserSemantic = 5635,
-		HlslSemanticGOOGLE = 5635,
 		UserTypeGOOGLE = 5636,
 		FunctionRoundingModeINTEL = 5822,
 		FunctionDenormModeINTEL = 5823,
@@ -494,9 +566,8 @@ namespace Frertex::Transpilers::SPIRV
 		FunctionFloatingPointModeINTEL = 6080,
 		SingleElementVectorINTEL = 6085,
 		VectorComputeCallableFunctionINTEL = 6087,
-		MediaBlockIOINTEL = 6140	}
-
-	void RequireCapExtDecoration(EDecoration value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		MediaBlockIOINTEL = 6140
+	};
 
 	enum class EBuiltIn : std::uint32_t
 	{
@@ -542,15 +613,10 @@ namespace Frertex::Transpilers::SPIRV
 		VertexIndex = 42,
 		InstanceIndex = 43,
 		SubgroupEqMask = 4416,
-		SubgroupEqMaskKHR = 4416,
 		SubgroupGeMask = 4417,
-		SubgroupGeMaskKHR = 4417,
 		SubgroupGtMask = 4418,
-		SubgroupGtMaskKHR = 4418,
 		SubgroupLeMask = 4419,
-		SubgroupLeMaskKHR = 4419,
 		SubgroupLtMask = 4420,
-		SubgroupLtMaskKHR = 4420,
 		BaseVertex = 4424,
 		BaseInstance = 4425,
 		DrawIndex = 4426,
@@ -581,53 +647,22 @@ namespace Frertex::Transpilers::SPIRV
 		MeshViewCountNV = 5280,
 		MeshViewIndicesNV = 5281,
 		BaryCoordKHR = 5286,
-		BaryCoordNV = 5286,
 		BaryCoordNoPerspKHR = 5287,
-		BaryCoordNoPerspNV = 5287,
 		FragSizeEXT = 5292,
-		FragmentSizeNV = 5292,
 		FragInvocationCountEXT = 5293,
-		InvocationsPerPixelNV = 5293,
 		PrimitivePointIndicesEXT = 5294,
 		PrimitiveLineIndicesEXT = 5295,
 		PrimitiveTriangleIndicesEXT = 5296,
 		CullPrimitiveEXT = 5299,
-		LaunchIdNV = 5319,
-		LaunchIdKHR = 5319,
-		LaunchSizeNV = 5320,
-		LaunchSizeKHR = 5320,
-		WorldRayOriginNV = 5321,
-		WorldRayOriginKHR = 5321,
-		WorldRayDirectionNV = 5322,
-		WorldRayDirectionKHR = 5322,
-		ObjectRayOriginNV = 5323,
-		ObjectRayOriginKHR = 5323,
-		ObjectRayDirectionNV = 5324,
-		ObjectRayDirectionKHR = 5324,
-		RayTminNV = 5325,
-		RayTminKHR = 5325,
-		RayTmaxNV = 5326,
-		RayTmaxKHR = 5326,
-		InstanceCustomIndexNV = 5327,
-		InstanceCustomIndexKHR = 5327,
-		ObjectToWorldNV = 5330,
-		ObjectToWorldKHR = 5330,
-		WorldToObjectNV = 5331,
-		WorldToObjectKHR = 5331,
 		HitTNV = 5332,
-		HitKindNV = 5333,
-		HitKindKHR = 5333,
 		CurrentRayTimeNV = 5334,
-		IncomingRayFlagsNV = 5351,
-		IncomingRayFlagsKHR = 5351,
 		RayGeometryIndexKHR = 5352,
 		WarpsPerSMNV = 5374,
 		SMCountNV = 5375,
 		WarpIDNV = 5376,
 		SMIDNV = 5377,
-		CullMaskKHR = 6021	}
-
-	void RequireCapExtBuiltIn(EBuiltIn value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		CullMaskKHR = 6021
+	};
 
 	enum class EScope : std::uint32_t
 	{
@@ -637,10 +672,8 @@ namespace Frertex::Transpilers::SPIRV
 		Subgroup = 3,
 		Invocation = 4,
 		QueueFamily = 5,
-		QueueFamilyKHR = 5,
-		ShaderCallKHR = 6	}
-
-	void RequireCapExtScope(EScope value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		ShaderCallKHR = 6
+	};
 
 	enum class EGroupOperation : std::uint32_t
 	{
@@ -650,17 +683,15 @@ namespace Frertex::Transpilers::SPIRV
 		ClusteredReduce = 3,
 		PartitionedReduceNV = 6,
 		PartitionedInclusiveScanNV = 7,
-		PartitionedExclusiveScanNV = 8	}
-
-	void RequireCapExtGroupOperation(EGroupOperation value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		PartitionedExclusiveScanNV = 8
+	};
 
 	enum class EKernelEnqueueFlags : std::uint32_t
 	{
 		NoWait = 0,
 		WaitKernel = 1,
-		WaitWorkGroup = 2	}
-
-	void RequireCapExtKernelEnqueueFlags(EKernelEnqueueFlags value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		WaitWorkGroup = 2
+	};
 
 	enum class ECapability : std::uint32_t
 	{
@@ -741,10 +772,6 @@ namespace Frertex::Transpilers::SPIRV
 		WorkgroupMemoryExplicitLayout8BitAccessKHR = 4429,
 		WorkgroupMemoryExplicitLayout16BitAccessKHR = 4430,
 		SubgroupVoteKHR = 4431,
-		StorageBuffer16BitAccess = 4433,
-		StorageUniformBufferBlock16 = 4433,
-		UniformAndStorageBuffer16BitAccess = 4434,
-		StorageUniform16 = 4434,
 		StoragePushConstant16 = 4435,
 		StorageInputOutput16 = 4436,
 		DeviceGroup = 4437,
@@ -775,7 +802,6 @@ namespace Frertex::Transpilers::SPIRV
 		SampleMaskOverrideCoverageNV = 5249,
 		GeometryShaderPassthroughNV = 5251,
 		ShaderViewportIndexLayerEXT = 5254,
-		ShaderViewportIndexLayerNV = 5254,
 		ShaderViewportMaskNV = 5255,
 		ShaderStereoViewNV = 5259,
 		PerViewAttributesNV = 5260,
@@ -784,43 +810,26 @@ namespace Frertex::Transpilers::SPIRV
 		ImageFootprintNV = 5282,
 		MeshShadingEXT = 5283,
 		FragmentBarycentricKHR = 5284,
-		FragmentBarycentricNV = 5284,
 		ComputeDerivativeGroupQuadsNV = 5288,
 		FragmentDensityEXT = 5291,
-		ShadingRateNV = 5291,
 		GroupNonUniformPartitionedNV = 5297,
 		ShaderNonUniform = 5301,
-		ShaderNonUniformEXT = 5301,
 		RuntimeDescriptorArray = 5302,
-		RuntimeDescriptorArrayEXT = 5302,
 		InputAttachmentArrayDynamicIndexing = 5303,
-		InputAttachmentArrayDynamicIndexingEXT = 5303,
 		UniformTexelBufferArrayDynamicIndexing = 5304,
-		UniformTexelBufferArrayDynamicIndexingEXT = 5304,
 		StorageTexelBufferArrayDynamicIndexing = 5305,
-		StorageTexelBufferArrayDynamicIndexingEXT = 5305,
 		UniformBufferArrayNonUniformIndexing = 5306,
-		UniformBufferArrayNonUniformIndexingEXT = 5306,
 		SampledImageArrayNonUniformIndexing = 5307,
-		SampledImageArrayNonUniformIndexingEXT = 5307,
 		StorageBufferArrayNonUniformIndexing = 5308,
-		StorageBufferArrayNonUniformIndexingEXT = 5308,
 		StorageImageArrayNonUniformIndexing = 5309,
-		StorageImageArrayNonUniformIndexingEXT = 5309,
 		InputAttachmentArrayNonUniformIndexing = 5310,
-		InputAttachmentArrayNonUniformIndexingEXT = 5310,
 		UniformTexelBufferArrayNonUniformIndexing = 5311,
-		UniformTexelBufferArrayNonUniformIndexingEXT = 5311,
 		StorageTexelBufferArrayNonUniformIndexing = 5312,
-		StorageTexelBufferArrayNonUniformIndexingEXT = 5312,
 		RayTracingNV = 5340,
 		RayTracingMotionBlurNV = 5341,
 		VulkanMemoryModel = 5345,
-		VulkanMemoryModelKHR = 5345,
 		VulkanMemoryModelDeviceScope = 5346,
-		VulkanMemoryModelDeviceScopeKHR = 5346,
 		PhysicalStorageBufferAddresses = 5347,
-		PhysicalStorageBufferAddressesEXT = 5347,
 		ComputeDerivativeGroupLinearNV = 5350,
 		RayTracingProvisionalKHR = 5353,
 		CooperativeMatrixNV = 5357,
@@ -829,7 +838,6 @@ namespace Frertex::Transpilers::SPIRV
 		ShaderSMBuiltinsNV = 5373,
 		FragmentShaderPixelInterlockEXT = 5378,
 		DemoteToHelperInvocation = 5379,
-		DemoteToHelperInvocationEXT = 5379,
 		BindlessTextureNV = 5390,
 		SubgroupShuffleINTEL = 5568,
 		SubgroupBufferBlockIOINTEL = 5569,
@@ -871,13 +879,9 @@ namespace Frertex::Transpilers::SPIRV
 		BlockingPipesINTEL = 5945,
 		FPGARegINTEL = 5948,
 		DotProductInputAll = 6016,
-		DotProductInputAllKHR = 6016,
 		DotProductInput4x8Bit = 6017,
-		DotProductInput4x8BitKHR = 6017,
 		DotProductInput4x8BitPacked = 6018,
-		DotProductInput4x8BitPackedKHR = 6018,
 		DotProduct = 6019,
-		DotProductKHR = 6019,
 		RayCullMaskKHR = 6020,
 		BitInstructions = 6025,
 		GroupNonUniformRotateKHR = 6026,
@@ -888,36 +892,71 @@ namespace Frertex::Transpilers::SPIRV
 		AtomicFloat16AddEXT = 6095,
 		DebugInfoModuleINTEL = 6114,
 		SplitBarrierINTEL = 6141,
-		GroupUniformArithmeticKHR = 6400	}
-
-	void RequireCapExtCapability(ECapability value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		GroupUniformArithmeticKHR = 6400
+	};
 
 	enum class ERayQueryIntersection : std::uint32_t
 	{
 		RayQueryCandidateIntersectionKHR = 0,
-		RayQueryCommittedIntersectionKHR = 1	}
-
-	void RequireCapExtRayQueryIntersection(ERayQueryIntersection value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		RayQueryCommittedIntersectionKHR = 1
+	};
 
 	enum class ERayQueryCommittedIntersectionType : std::uint32_t
 	{
 		RayQueryCommittedIntersectionNoneKHR = 0,
 		RayQueryCommittedIntersectionTriangleKHR = 1,
-		RayQueryCommittedIntersectionGeneratedKHR = 2	}
-
-	void RequireCapExtRayQueryCommittedIntersectionType(ERayQueryCommittedIntersectionType value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		RayQueryCommittedIntersectionGeneratedKHR = 2
+	};
 
 	enum class ERayQueryCandidateIntersectionType : std::uint32_t
 	{
 		RayQueryCandidateIntersectionTriangleKHR = 0,
-		RayQueryCandidateIntersectionAABBKHR = 1	}
-
-	void RequireCapExtRayQueryCandidateIntersectionType(ERayQueryCandidateIntersectionType value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+		RayQueryCandidateIntersectionAABBKHR = 1
+	};
 
 	enum class EPackedVectorFormat : std::uint32_t
 	{
-		PackedVectorFormat4x8Bit = 0,
-		PackedVectorFormat4x8BitKHR = 0	}
+		PackedVectorFormat4x8Bit = 0
+	};
 
-	void RequireCapExtPackedVectorFormat(EPackedVectorFormat value, std::vector<ECapability>& capabilities, std::vector<std::string>& extensions);
+	void RequireCapExtImageOperands(EImageOperands value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtFPFastMathMode(EFPFastMathMode value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtSelectionControl(ESelectionControl value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtLoopControl(ELoopControl value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtFunctionControl(EFunctionControl value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtMemorySemantics(EMemorySemantics value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtMemoryAccess(EMemoryAccess value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtKernelProfilingInfo(EKernelProfilingInfo value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtRayFlags(ERayFlags value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtFragmentShadingRate(EFragmentShadingRate value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtSourceLanguage(ESourceLanguage value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtExecutionModel(EExecutionModel value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtAddressingModel(EAddressingModel value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtMemoryModel(EMemoryModel value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtExecutionMode(EExecutionMode value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtStorageClass(EStorageClass value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtDim(EDim value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtSamplerAddressingMode(ESamplerAddressingMode value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtSamplerFilterMode(ESamplerFilterMode value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtImageFormat(EImageFormat value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtImageChannelOrder(EImageChannelOrder value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtImageChannelDataType(EImageChannelDataType value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtFPRoundingMode(EFPRoundingMode value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtFPDenormMode(EFPDenormMode value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtQuantizationModes(EQuantizationModes value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtFPOperationMode(EFPOperationMode value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtOverflowModes(EOverflowModes value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtLinkageType(ELinkageType value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtAccessQualifier(EAccessQualifier value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtFunctionParameterAttribute(EFunctionParameterAttribute value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtDecoration(EDecoration value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtBuiltIn(EBuiltIn value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtScope(EScope value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtGroupOperation(EGroupOperation value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtKernelEnqueueFlags(EKernelEnqueueFlags value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtCapability(ECapability value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtRayQueryIntersection(ERayQueryIntersection value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtRayQueryCommittedIntersectionType(ERayQueryCommittedIntersectionType value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtRayQueryCandidateIntersectionType(ERayQueryCandidateIntersectionType value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
+	void RequireCapExtPackedVectorFormat(EPackedVectorFormat value, std::set<ECapability>& capabilities, std::set<std::string>& extensions);
 } // namespace Frertex::Transpilers::SPIRV

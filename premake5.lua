@@ -13,7 +13,7 @@ workspace("Frertex")
 	exceptionhandling("On")
 	flags("MultiProcessorCompile")
 
-	startproject("Frertex")
+	startproject("CLI")
 
 	group("Dependencies")
 	project("FMT")

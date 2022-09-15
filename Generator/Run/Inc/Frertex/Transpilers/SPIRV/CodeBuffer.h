@@ -693,7 +693,7 @@ namespace Frertex::Transpilers::SPIRV
 		std::uint64_t literalStringLength(std::string_view name);
 
 		void requireCapability(ECapability capability) { m_Capabilities.insert(capability); }
-		void requireExtension(std::string_view extension) { m_Extensions.insert(std::string { extension }); }
+		void requireExtension(std::string_view extension) { m_Extensions.emplace_back(std::string { extension }); }
 
 	private:
 		std::vector<std::uint32_t> m_Buffer;
