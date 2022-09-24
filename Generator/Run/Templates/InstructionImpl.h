@@ -1,3 +1,4 @@
+#!$<>\
 $$Cast:OPCODE,OPCODE_HEX,hexstr,4$$
 $$Assign:CONSTANT_LENGTH,0$$
 $$Assign:DYNAMIC_LENGTH$$
@@ -37,7 +38,7 @@ $$Foreach:ARGUMENT,ARGUMENTS$$
 				$$Append:DYNAMIC_LENGTH, + $$
 			$$End$$
 			$$Append:PUSH_LIST,if (!$<ARGUMENT.NAME>$.empty())\n\tpushLiteralString($<ARGUMENT.NAME>$);$$
-			$$Append:DYNAMIC_LENGTH,literalStringLength($<ARGUMENT.NAME>$)$$
+			$$Append:DYNAMIC_LENGTH,($<ARGUMENT.NAME>$.empty() ? literalStringLength($<ARGUMENT.NAME>$) : 0)$$
 		$$Elifeq:ARGUMENT.CATEGORY,pair$$
 			$$If:PUSH_LIST$$
 				$$Append:PUSH_LIST,\n$$
@@ -125,7 +126,11 @@ $$Foreach:ARGUMENT,ARGUMENTS$$
 			$$If:PUSH_LIST$$
 				$$Append:PUSH_LIST,\n$$
 			$$End$$
+			$$If:DYNAMIC_LENGTH$$
+				$$Append:DYNAMIC_LENGTH, + $$
+			$$End$$
 			$$Append:PUSH_LIST,pushLiteralString($<ARGUMENT.NAME>$);$$
+			$$Append:DYNAMIC_LENGTH,literalStringLength($<ARGUMENT.NAME>$)$$
 		$$Elifeq:ARGUMENT.CATEGORY,pair$$
 			$$If:PUSH_LIST$$
 				$$Append:PUSH_LIST,\n$$

@@ -1,12 +1,13 @@
-$$ASSIGN:VALUES,$$
-$$FOREACH:ENUM=ENUMS$$
-	$$IF:VALUES$$
-		$$APPEND:VALUES,\,\n$$
-	$$END$$
-	$$APPEND:VALUES,$$ENUM.NAME$$ = $$ENUM.VALUE$$$$
-$$END$$
-$$ALIGNL:VALUES,=$$
-enum class $$TYPENAME$$ : std::uint32_t
+#!$<>\
+$$Assign:VALUES$$
+$$Foreach:ENUM,ENUMS$$
+	$$If:VALUES$$
+		$$Append:VALUES,\,\n$$
+	$$End$$
+	$$Append:VALUES,$<ENUM.NAME>$ = $<ENUM.VALUE>$$$
+$$End$$
+$$AlignL:VALUES,=$$
+enum class $$Insert:TYPENAME$$ : std::uint32_t
 {
-	$$VALUES$$
+	$$Insert:VALUES$$
 };

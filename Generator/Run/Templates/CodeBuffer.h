@@ -1,3 +1,4 @@
+#!$<>\
 #pragma once
 
 #include "Enumerations.h"
@@ -14,9 +15,9 @@ namespace Frertex::Transpilers::SPIRV
 	struct CodeBuffer
 	{
 	public:
-		$$FOREACH:INSTRUCTION=INSTRUCTIONS$$
-		$$TEMPLATE:"Instruction.h",NAME=INSTRUCTION.NAME,ARGUMENTS=INSTRUCTION.ARGUMENTS,OPCODE=INSTRUCTION.OPCODE$$
-		$$END$$
+		$$Foreach:INSTRUCTION,INSTRUCTIONS$$
+		$$Template:Insert,"Instruction.h",NAME=INSTRUCTION.NAME,ARGUMENTS=INSTRUCTION.ARGUMENTS,OPCODE=INSTRUCTION.OPCODE$$
+		$$End$$
 
 		auto begin() { return m_Buffer.begin(); }
 		auto end() { return m_Buffer.end(); }

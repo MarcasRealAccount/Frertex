@@ -1,23 +1,23 @@
-void RequireCapExt$$NAME$$([[maybe_unused]] $$TYPENAME$$ value, [[maybe_unused]] std::set<ECapability>& capabilities, [[maybe_unused]] std::set<std::string>& extensions)
+#!$<>\
+void RequireCapExt$$Insert:NAME$$([[maybe_unused]] $$Insert:TYPENAME$$ value, [[maybe_unused]] std::set<ECapability>& capabilities, [[maybe_unused]] std::set<std::string>& extensions)
 {
 	PROFILE_FUNC;
-	$$IF:CASES$$
+	$$If:CASES$$
 
 	switch (value)
 	{
-	$$FOREACH:CASE=CASES$$
-	case $$CASE.NAME$$:
-		$$FOREACH:CAPABILITY=CASE.CAPABILITIES$$
-		$$ASSIGN:CTYPENAME,E$$
-		$$APPEND:CTYPENAME,$$CAPABILITY.NAME$$$$
-		capabilities.insert($$CTYPENAME$$::$$CAPABILITY.VALUE$$);
-		$$END$$
-		$$FOREACH:EXTENSION=CASE.EXTENSIONS$$
-		extensions.insert($$EXTENSION$$);
-		$$END$$
+	$$Foreach:CASE,CASES$$
+	case $$Insert:CASE.NAME$$:
+		$$Foreach:CAPABILITY,CASE.CAPABILITIES$$
+		$$Assign:CTYPENAME,E$<CAPABILITY.NAME>$$$
+		capabilities.insert($$Insert:CTYPENAME$$::$$Insert:CAPABILITY.VALUE$$);
+		$$End$$
+		$$Foreach:EXTENSION,CASE.EXTENSIONS$$
+		extensions.insert($$Insert:EXTENSION$$);
+		$$End$$
 		break;
-	$$END$$
+	$$End$$
 	default: break;
 	}
-	$$END$$
+	$$End$$
 }

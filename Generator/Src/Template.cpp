@@ -1,5 +1,7 @@
 #include "Template.h"
 
+#include <json/json.h>
+
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -976,7 +978,7 @@ void TemplateEnvironment::eraseRange()
 	}
 
 	auto& back = m_CallStack.back();
-	if (m_CurrentCall != back.m_StartCallIndex)
+	if (m_CurrentCall != back.m_Scope->m_OpenCall)
 	{
 		std::cerr << "Can only erase range within the first call of the range!!\n";
 		return;
@@ -988,11 +990,33 @@ void TemplateEnvironment::eraseRange()
 	m_Offset -= end - start;
 }
 
-void TemplateEnvironment::insertText(std::string_view text)
+void TemplateEnvironment::insertText(std::string_view text, bool includeSpaces)
 {
-	auto& call = m_Template->m_Calls[m_CurrentCall];
-	m_Source.insert(call.m_SourceIndex + m_Offset, text);
-	m_Offset += text.size();
+	if (text.empty())
+		return;
+
+	auto&       call = m_Template->m_Calls[m_CurrentCall];
+	std::string str(text);
+	if (includeSpaces && call.m_Spaces)
+	{
+		if (call.m_HasNewline)
+			str = '\n' + str;
+		std::string spaces(call.m_Spaces, ' ');
+		str = spaces + str;
+		{
+			std::size_t offset = 0;
+			while (offset < str.size())
+			{
+				std::size_t newline = str.find_first_of('\n', offset);
+				if (newline >= str.size())
+					break;
+				str.insert(newline + 1, spaces);
+				offset = newline + 1 + spaces.size();
+			}
+		}
+	}
+	m_Source.insert(call.m_SourceIndex + m_Offset, str);
+	m_Offset += str.size();
 }
 
 std::string TemplateEnvironment::getSourceRange()
@@ -1011,54 +1035,132 @@ TemplateCallStackEntry* TemplateEnvironment::currentStack()
 	return m_CallStack.empty() ? nullptr : &m_CallStack.back();
 }
 
-void TemplateEnvironment::pushStack(std::size_t start, std::size_t end, void* userData)
+const TemplateScope* TemplateEnvironment::currentScope()
 {
-	m_CallStack.emplace_back(TemplateCallStackEntry {
-	    start < m_Template->m_Calls.size() ? &m_Template->m_Calls[start] : nullptr,
-	    end < m_Template->m_Calls.size() ? &m_Template->m_Calls[end] : nullptr,
-	    start,
-	    end,
-	    userData });
-	m_CurrentLastCall = end;
+	return m_CallStack.empty() ? nullptr : m_CallStack.back().m_Scope;
 }
 
-void TemplateEnvironment::popStack()
+const TemplateScope* TemplateEnvironment::getScope(std::size_t scope)
 {
-	m_CallStack.pop_back();
-	m_CurrentLastCall = m_CallStack.empty() ? 0 : m_CallStack.back().m_EndCallIndex;
+	return scope < m_Template->m_Scopes.size() ? &m_Template->m_Scopes[scope] : nullptr;
+}
+
+void TemplateEnvironment::exitScope()
+{
+	if (m_CallStack.size() <= 1)
+	{
+		std::cerr << "Trying to exit the global scope!!\n";
+		return;
+	}
+
+	auto& back = m_CallStack.back();
+	jump(back.m_Scope->m_CloseCall + 1);
+	popScope();
+	m_PopScope = false;
+}
+
+void TemplateEnvironment::exitScopes()
+{
+	if (m_CallStack.size() <= 1)
+	{
+		std::cerr << "Trying to exit the global scope!!\n";
+		return;
+	}
+
+	auto& back      = m_CallStack.back();
+	auto  lastScope = back.m_Scope->m_LastScope != ~0ULL ? getScope(back.m_Scope->m_LastScope) : back.m_Scope;
+	jump(lastScope->m_CloseCall + 1);
+	popScope();
+	m_PopScope = false;
+}
+
+void TemplateEnvironment::nextScope()
+{
+	if (m_CallStack.size() <= 1)
+	{
+		std::cerr << "Trying to exit the global scope!!\n";
+		return;
+	}
+
+	auto& back = m_CallStack.back();
+	if (back.m_Scope->m_NextScope != ~0ULL)
+	{
+		// Jump to start of next scope
+		auto newScope       = getScope(back.m_Scope->m_NextScope);
+		back.m_StartCall    = &m_Template->m_Calls[newScope->m_OpenCall];
+		back.m_EndCall      = &m_Template->m_Calls[newScope->m_CloseCall];
+		back.m_ScopeIndex   = back.m_Scope->m_NextScope;
+		back.m_Scope        = newScope;
+		m_CurrentScopeIndex = back.m_ScopeIndex;
+		m_CurrentLastCall   = back.m_Scope->m_CloseCall;
+		jump(back.m_Scope->m_OpenCall);
+	}
+	else
+	{
+		// Exit the scope
+		exitScope();
+	}
+	m_PopScope = false;
+}
+
+void TemplateEnvironment::lastScope()
+{
+	if (m_CallStack.size() <= 1)
+	{
+		std::cerr << "Trying to exit the global scope!!\n";
+		return;
+	}
+
+	auto& back = m_CallStack.back();
+	if (back.m_Scope->m_LastScope != ~0ULL)
+	{
+		// Jump to start of last scope
+		auto newScope       = getScope(back.m_Scope->m_LastScope);
+		back.m_StartCall    = &m_Template->m_Calls[newScope->m_OpenCall];
+		back.m_EndCall      = &m_Template->m_Calls[newScope->m_CloseCall];
+		back.m_ScopeIndex   = back.m_Scope->m_LastScope;
+		back.m_Scope        = newScope;
+		m_CurrentScopeIndex = back.m_ScopeIndex;
+		m_CurrentLastCall   = back.m_Scope->m_CloseCall;
+		jump(back.m_Scope->m_OpenCall);
+	}
+	else
+	{
+		// Exit the scope
+		exitScope();
+	}
+	m_PopScope = false;
+}
+
+void TemplateEnvironment::setStackUserData(void* userData)
+{
+	if (m_CallStack.size() <= 1)
+	{
+		std::cerr << "Can't set user data for global stack!!\n";
+		return;
+	}
+
+	auto& back = m_CallStack.back();
+	if (m_CurrentCall != back.m_Scope->m_OpenCall)
+	{
+		std::cerr << "Can only set user data for stack within the first call of the stack!!\n";
+		return;
+	}
+
+	back.m_UserData = userData;
+}
+
+void TemplateEnvironment::jumpToStartOfScope()
+{
+	auto scope = currentScope();
+	jump(scope->m_OpenCall + 1);
+	m_PopScope = false;
 }
 
 void TemplateEnvironment::jump(std::size_t call)
 {
 	m_CurrentCall   = call;
 	m_IncrementCall = false;
-}
-
-std::size_t TemplateEnvironment::findNextCall(std::string_view callName)
-{
-	if (callName == "End")
-	{
-		std::size_t depth = 1;
-		for (std::size_t index = m_CurrentCall + 1; index < m_CurrentLastCall; ++index)
-		{
-			auto& name = m_Template->m_Calls[index].m_Function;
-			if (name == "End")
-				if (--depth == 0)
-					return index;
-
-			auto function = m_Engine->getFunction(name);
-			if (function && function->hasEndCall())
-				++depth;
-		}
-		return ~0ULL;
-	}
-	else
-	{
-		for (std::size_t index = m_CurrentCall + 1; index < m_CurrentLastCall; ++index)
-			if (m_Template->m_Calls[index].m_Function == callName)
-				return index;
-		return ~0ULL;
-	}
 }
 
 TemplateMacro* TemplateEnvironment::assignIntMacro(std::string_view name, std::int64_t value)
@@ -1649,28 +1751,70 @@ void TemplateEnvironment::removeMacro(std::string_view name)
 	}
 }
 
+void TemplateEnvironment::pushScope(std::size_t scopeIndex)
+{
+	if (scopeIndex == ~0ULL)
+	{
+		std::cerr << "TemplateEngine broke with new scope '" << scopeIndex << "'!!\n";
+		return;
+	}
+
+	const TemplateScope& scope = m_Template->m_Scopes[scopeIndex];
+	m_CallStack.emplace_back(TemplateCallStackEntry {
+	    &m_Template->m_Calls[scope.m_OpenCall],
+	    &m_Template->m_Calls[scope.m_CloseCall],
+	    &scope,
+	    scopeIndex,
+	    nullptr });
+	m_CurrentScopeIndex = scopeIndex;
+	m_CurrentLastCall   = scope.m_CloseCall;
+}
+
+void TemplateEnvironment::popScope()
+{
+	m_CallStack.pop_back();
+	if (m_CallStack.size() <= 1)
+	{
+		m_CurrentLastCall   = m_Template->m_Calls.size();
+		m_CurrentScopeIndex = ~0ULL;
+	}
+	else
+	{
+		m_CurrentLastCall   = m_CallStack.back().m_Scope->m_CloseCall;
+		m_CurrentScopeIndex = m_CallStack.back().m_ScopeIndex;
+	}
+}
+
 TemplateEngine::TemplateEngine()
 {
 	addFunction("Insert", { &Insert });
 	addFunction("Assign", { &Assign });
 	addFunction("Unassign", { &Unassign });
+
 	addFunction("Append", { &Append });
 	addFunction("PushFront", { &PushFront });
 	addFunction("PushBack", { &PushBack });
 	addFunction("PopFront", { &PopFront });
 	addFunction("PopBack", { &PopBack });
+
 	addFunction("Cast", { &Cast });
-	addFunction("For", { &For, &For });
-	addFunction("Foreach", { &Foreach, &Foreach });
-	addFunction("If", { &If, &If });
-	addFunction("Ifn", { &If, &If });
-	addFunction("Ifeq", { &If, &If });
-	addFunction("Ifneq", { &If, &If });
+
+	addFunction("For", { &For, "End" });
+	addFunction("Foreach", { &Foreach, "End" });
+	std::vector<std::string> ifStatements { "If", "Ifn", "Ifeq", "Ifneq" };
+	std::vector<std::string> elifStatements { "Else", "Elif", "Elifn", "Elifeq", "Elifneq" };
+	for (auto& ifStatement : ifStatements)
+		addFunction(ifStatement, { &If, "End", elifStatements });
+
+	addFunction("Add", { &Add });
+
+	addFunction("Template", { &CallTemplate });
 }
 
 std::string TemplateEngine::executeTemplate(std::string_view name, TemplateEnvironment& environment)
 {
 	compileTemplate(name);
+	updateScopesAndFunctionLUT(name);
 
 	auto itr = std::find_if(m_Templates.begin(),
 	                        m_Templates.end(),
@@ -1685,8 +1829,8 @@ std::string TemplateEngine::executeTemplate(std::string_view name, TemplateEnvir
 	environment.m_Template = &itr->second;
 	environment.m_CallStack.clear();
 	environment.m_Source = environment.m_Template->m_Text;
-
-	environment.pushStack(0, environment.m_Template->m_Calls.size(), nullptr);
+	environment.m_CallStack.emplace_back(TemplateCallStackEntry { &environment.m_Template->m_Calls[0], nullptr, nullptr, ~0ULL, nullptr });
+	environment.m_CurrentLastCall = environment.m_Template->m_Calls.size();
 
 	while (!environment.m_CallStack.empty())
 	{
@@ -1695,7 +1839,13 @@ std::string TemplateEngine::executeTemplate(std::string_view name, TemplateEnvir
 			environment.m_IncrementCall = true;
 
 			auto& call = environment.m_Template->m_Calls[environment.m_CurrentCall];
-			invoke(call.m_Function, environment, call);
+			if (call.m_FunctionPtr)
+			{
+				if (call.m_ScopeIndex != environment.m_CurrentScopeIndex)
+					environment.pushScope(call.m_ScopeIndex);
+
+				call.m_FunctionPtr->m_Callback(environment, call);
+			}
 
 			if (environment.m_IncrementCall)
 				++environment.m_CurrentCall;
@@ -1707,15 +1857,18 @@ std::string TemplateEngine::executeTemplate(std::string_view name, TemplateEnvir
 			if (back.m_EndCall)
 			{
 				environment.m_IncrementCall = true;
+				environment.m_PopScope      = true;
+				back.m_StartCall->m_FunctionPtr->m_Callback(environment, *back.m_EndCall);
 
-				invokeEnd(back.m_StartCall->m_Function, environment, *back.m_EndCall);
+				if (environment.m_PopScope)
+					environment.popScope();
 
 				if (environment.m_IncrementCall)
 					++environment.m_CurrentCall;
 			}
 			else
 			{
-				environment.popStack();
+				environment.popScope();
 			}
 		}
 		else
@@ -1739,6 +1892,12 @@ void TemplateEngine::addFunction(std::string_view name, TemplateFunction functio
 		return;
 
 	m_Functions.insert({ std::string { name }, std::move(function) });
+
+	if (m_UpdateFunctionVersion)
+	{
+		++m_FunctionVersion;
+		m_UpdateFunctionVersion = false;
+	}
 }
 
 void TemplateEngine::removeFunction(std::string_view name)
@@ -1751,6 +1910,12 @@ void TemplateEngine::removeFunction(std::string_view name)
 	                        });
 	if (itr != m_Functions.end())
 		m_Functions.erase(itr);
+
+	if (m_UpdateFunctionVersion)
+	{
+		++m_FunctionVersion;
+		m_UpdateFunctionVersion = false;
+	}
 }
 
 TemplateFunction* TemplateEngine::getFunction(std::string_view name)
@@ -1763,30 +1928,6 @@ TemplateFunction* TemplateEngine::getFunction(std::string_view name)
 	                        });
 
 	return itr != m_Functions.end() ? &itr->second : nullptr;
-}
-
-void TemplateEngine::invoke(std::string_view name, TemplateEnvironment& environment, const TemplateCall& call)
-{
-	auto function = getFunction(name);
-	if (!function)
-	{
-		std::cerr << "Function '" << name << "' does not exist!\n";
-		return;
-	}
-
-	function->m_Callback(environment, call);
-}
-
-void TemplateEngine::invokeEnd(std::string_view name, TemplateEnvironment& environment, const TemplateCall& call)
-{
-	auto function = getFunction(name);
-	if (!function)
-	{
-		std::cerr << "Function '" << name << "' does not exist!\n";
-		return;
-	}
-
-	function->m_EndCallback(environment, call);
 }
 
 void TemplateEngine::compileTemplate(std::string_view name)
@@ -1808,9 +1949,34 @@ void TemplateEngine::compileTemplate(std::string_view name)
 		file.read(source.data(), source.size());
 		file.close();
 
+		{
+			std::size_t end = source.find_last_not_of('\0');
+			source.resize(end + 1);
+		}
+
 		std::vector<TemplateCall> calls;
 
 		std::size_t offset = 0;
+		if (source.size() >= (offset + 2) && source[offset] == '#' && source[offset + 1] == '!')
+		{
+			// Might be options
+			std::size_t end          = source.find_first_of('\n', offset + 2);
+			char        commandChar  = '$';
+			char        openRefChar  = '<';
+			char        closeRefChar = '<';
+			char        escapeChar   = '\\';
+			if (end > offset + 2)
+				commandChar = source[offset + 2];
+			if (end > offset + 3)
+				openRefChar = source[offset + 3];
+			if (end > offset + 4)
+				closeRefChar = source[offset + 4];
+			if (end > offset + 5)
+				escapeChar = source[offset + 5];
+			setChars(commandChar, openRefChar, closeRefChar, escapeChar);
+			source.erase(offset, end - offset + 1);
+		}
+
 		while (offset < source.size())
 		{
 			std::size_t   callStart = offset;
@@ -1918,19 +2084,27 @@ void TemplateEngine::compileTemplate(std::string_view name)
 			std::size_t sourceOffset = callStart >= 3 ? callStart - 3 : 0;
 			bool        failed       = false;
 			bool        end          = false;
+			bool        hasNewline   = false;
+			std::size_t spaces       = 0;
 			for (; !failed && !end && sourceOffset > 0; --sourceOffset)
 			{
 				switch (source[sourceOffset])
 				{
 				case ' ':
+					++spaces;
+					break;
 				case '\t':
+					spaces += 4;
 					break;
 				case '\n':
-					end = true;
+					hasNewline = true;
+					end        = true;
 					break;
 				default:
 					sourceOffset = callStart - 2;
 					failed       = true;
+					hasNewline   = false;
+					spaces       = 0;
 					break;
 				}
 				if (end || failed)
@@ -1951,13 +2125,15 @@ void TemplateEngine::compileTemplate(std::string_view name)
 					sourceOffset = callStart - 2;
 					sourceEnd    = callEnd;
 					failed       = true;
+					hasNewline   = false;
+					spaces       = 0;
 					break;
 				}
 				if (failed)
 					break;
 			}
 
-			calls.emplace_back(TemplateCall { source.substr(callNameStart, callNameEnd - callNameStart), std::move(arguments), sourceOffset });
+			calls.emplace_back(TemplateCall { source.substr(callNameStart, callNameEnd - callNameStart), nullptr, std::move(arguments), sourceOffset, hasNewline, spaces });
 			source.erase(sourceOffset, sourceEnd - sourceOffset);
 			offset = sourceOffset;
 		}
@@ -1969,6 +2145,119 @@ void TemplateEngine::compileTemplate(std::string_view name)
 	}
 }
 
+void TemplateEngine::updateScopesAndFunctionLUT(std::string_view name)
+{
+	auto itr = std::find_if(m_Templates.begin(),
+	                        m_Templates.end(),
+	                        [name](const std::pair<std::string, Template>& a)
+	                        {
+		                        return a.first == name;
+	                        });
+	if (itr == m_Templates.end() || itr->second.m_LUTVersion == m_FunctionVersion)
+		return;
+
+	struct ScopeStackEntry
+	{
+		std::size_t       scopeIndex;
+		std::size_t       start;
+		TemplateFunction* stackStart;
+	};
+
+	std::vector<ScopeStackEntry> scopeStack;
+
+	std::size_t currentScope      = ~0ULL;
+	std::size_t currentFirstScope = ~0ULL;
+	std::size_t currentCall       = 0;
+
+	for (; currentCall < itr->second.m_Calls.size(); ++currentCall)
+	{
+		bool  canCreateScope = true;
+		auto& call           = itr->second.m_Calls[currentCall];
+		auto  function       = getFunction(call.m_Function);
+		if (!scopeStack.empty())
+		{
+			auto& back = scopeStack.back();
+			if (back.stackStart->m_LastCall == call.m_Function)
+			{
+				// End scope
+				call.m_FunctionPtr                             = back.stackStart;
+				canCreateScope                                 = false;
+				itr->second.m_Scopes[currentScope].m_CloseCall = currentCall;
+				if (currentFirstScope != ~0ULL && currentFirstScope != currentScope)
+				{
+					auto* scope = &itr->second.m_Scopes[currentFirstScope];
+					while (scope->m_NextScope != ~0ULL)
+					{
+						scope->m_LastScope = currentScope;
+
+						scope = &itr->second.m_Scopes[scope->m_NextScope];
+					}
+				}
+				call.m_ScopeIndex = currentScope;
+				scopeStack.pop_back();
+				if (scopeStack.empty())
+				{
+					currentScope      = ~0ULL;
+					currentFirstScope = ~0ULL;
+				}
+				else
+				{
+					currentScope      = scopeStack.back().scopeIndex;
+					currentFirstScope = scopeStack.back().start;
+				}
+			}
+			else
+			{
+				for (auto& interCall : back.stackStart->m_InterCalls)
+				{
+					if (interCall == call.m_Function)
+					{
+						// End scope
+						auto scopeFunction                             = back.stackStart;
+						call.m_FunctionPtr                             = scopeFunction;
+						canCreateScope                                 = false;
+						itr->second.m_Scopes[currentScope].m_CloseCall = currentCall;
+						itr->second.m_Scopes[currentScope].m_NextScope = itr->second.m_Scopes.size();
+						std::size_t previousScope                      = currentScope;
+						scopeStack.pop_back();
+
+						// Create new scope
+						scopeStack.emplace_back(ScopeStackEntry { itr->second.m_Scopes.size(), currentFirstScope, scopeFunction });
+						currentScope = itr->second.m_Scopes.size();
+						itr->second.m_Scopes.emplace_back(TemplateScope { currentCall, ~0ULL, previousScope, ~0ULL, currentFirstScope, ~0ULL });
+						call.m_ScopeIndex = currentScope;
+						break;
+					}
+				}
+			}
+		}
+
+		if (canCreateScope)
+		{
+			call.m_FunctionPtr = function;
+			if (function)
+			{
+				if (function->hasLastCall())
+				{
+					// Create new scope
+					currentScope = itr->second.m_Scopes.size();
+					scopeStack.emplace_back(ScopeStackEntry { itr->second.m_Scopes.size(), currentScope, function });
+					itr->second.m_Scopes.emplace_back(TemplateScope { currentCall, ~0ULL, ~0ULL, ~0ULL, ~0ULL, ~0ULL });
+					currentFirstScope = currentScope;
+				}
+			}
+			else
+			{
+				std::cerr << "Trying to use unknown function '" << call.m_Function << "', skipping said function\n";
+			}
+
+			call.m_ScopeIndex = currentScope;
+		}
+	}
+
+	itr->second.m_LUTVersion = m_FunctionVersion;
+}
+
 void TemplateEngine::Insert(TemplateEnvironment& environment, const TemplateCall& call)
 {
 	auto macro = environment.getMacro(call.m_Arguments[0]);
@@ -1978,13 +2267,13 @@ void TemplateEngine::Insert(TemplateEnvironment& environment, const TemplateCall
 	switch (macro->m_Type)
 	{
 	case ETemplateMacroType::Int:
-		environment.insertText(std::to_string(std::get<std::int64_t>(macro->m_Value)));
+		environment.insertText(std::to_string(std::get<std::int64_t>(macro->m_Value)), true);
 		break;
 	case ETemplateMacroType::UInt:
-		environment.insertText(std::to_string(std::get<std::uint64_t>(macro->m_Value)));
+		environment.insertText(std::to_string(std::get<std::uint64_t>(macro->m_Value)), true);
 		break;
 	case ETemplateMacroType::Text:
-		environment.insertText(std::get<std::string>(macro->m_Value));
+		environment.insertText(std::get<std::string>(macro->m_Value), true);
 		break;
 	case ETemplateMacroType::Ref:
 	{
@@ -1992,13 +2281,13 @@ void TemplateEngine::Insert(TemplateEnvironment& environment, const TemplateCall
 		switch (ptr->m_Type)
 		{
 		case ETemplateMacroType::Int:
-			environment.insertText(std::to_string(std::get<std::int64_t>(ptr->m_Value)));
+			environment.insertText(std::to_string(std::get<std::int64_t>(ptr->m_Value)), true);
 			break;
 		case ETemplateMacroType::UInt:
-			environment.insertText(std::to_string(std::get<std::uint64_t>(ptr->m_Value)));
+			environment.insertText(std::to_string(std::get<std::uint64_t>(ptr->m_Value)), true);
 			break;
 		case ETemplateMacroType::Text:
-			environment.insertText(std::get<std::string>(ptr->m_Value));
+			environment.insertText(std::get<std::string>(ptr->m_Value), true);
 			break;
 		}
 		break;
@@ -2190,21 +2479,13 @@ void TemplateEngine::For(TemplateEnvironment& environment, const TemplateCall& c
 		{
 			environment.assignIntMacro(forData->m_VariableName, forData->m_CurrentValue);
 			environment.insertText(forData->m_SourceText);
-			environment.jump(entry->m_StartCallIndex + 1);
+			environment.jumpToStartOfScope();
 			return;
 		}
 		delete forData;
-		environment.popStack();
 	}
 	else
 	{
-		auto end = environment.findNextCall("End");
-		if (end >= environment.m_CurrentLastCall)
-		{
-			std::cerr << "'For' was unable to find end call, please add '$$End$$' after '$$For$$'\n";
-			return;
-		}
-
 		ForData* forData = new ForData {
 			call.m_Arguments[0],
 			std::strtoll(call.m_Arguments[1].data(), nullptr, 10),
@@ -2212,13 +2493,12 @@ void TemplateEngine::For(TemplateEnvironment& environment, const TemplateCall& c
 			std::strtoll(call.m_Arguments[3].data(), nullptr, 10),
 			{}
 		};
-
-		environment.pushStack(environment.m_CurrentCall, end, forData);
+		environment.setStackUserData(forData);
 		if (forData->m_CurrentValue == forData->m_EndValue)
 		{
 			environment.eraseRange();
-			environment.jump(end + 1);
-			environment.popStack();
+			environment.exitScope();
+			delete forData;
 			return;
 		}
 
@@ -2272,7 +2552,7 @@ void TemplateEngine::Foreach(TemplateEnvironment& environment, const TemplateCal
 			{
 				environment.assignRefMacro(foreachData->m_VariableName, *arr.m_Current);
 				environment.insertText(foreachData->m_SourceText);
-				environment.jump(entry->m_StartCallIndex + 1);
+				environment.jumpToStartOfScope();
 				return;
 			}
 			break;
@@ -2285,25 +2565,16 @@ void TemplateEngine::Foreach(TemplateEnvironment& environment, const TemplateCal
 			{
 				environment.assignRefMacro(foreachData->m_VariableName, map.m_Current->second);
 				environment.insertText(foreachData->m_SourceText);
-				environment.jump(entry->m_StartCallIndex + 1);
+				environment.jumpToStartOfScope();
 				return;
 			}
 			break;
 		}
 		}
 		delete foreachData;
-		environment.popStack();
 	}
 	else
 	{
-		auto end = environment.findNextCall("End");
-		if (end >= environment.m_CurrentLastCall)
-		{
-			std::cerr << "'Foreach' was unable to find end call, please add '$$End$$' after '$$Foreach$$'\n";
-			return;
-		}
-
-
 		auto           macro        = environment.getMacro(call.m_Arguments[1]);
 		ForeachData*   foreachData  = nullptr;
 		TemplateMacro* currentValue = nullptr;
@@ -2337,13 +2608,12 @@ void TemplateEngine::Foreach(TemplateEnvironment& environment, const TemplateCal
 			}
 		}
 
-		environment.pushStack(environment.m_CurrentCall, end, foreachData);
+		environment.setStackUserData(foreachData);
 		if (!macro)
 		{
 			std::cerr << "'" << call.m_Arguments[1] << "' is not an assigned macro\n";
 			environment.eraseRange();
-			environment.jump(end + 1);
-			environment.popStack();
+			environment.exitScope();
 			return;
 		}
 
@@ -2351,8 +2621,7 @@ void TemplateEngine::Foreach(TemplateEnvironment& environment, const TemplateCal
 		{
 			std::cerr << "'" << call.m_Arguments[1] << "' is not an iterable macro\n";
 			environment.eraseRange();
-			environment.jump(end + 1);
-			environment.popStack();
+			environment.exitScope();
 			return;
 		}
 
@@ -2360,8 +2629,7 @@ void TemplateEngine::Foreach(TemplateEnvironment& environment, const TemplateCal
 		{
 			delete foreachData;
 			environment.eraseRange();
-			environment.jump(end + 1);
-			environment.popStack();
+			environment.exitScope();
 			return;
 		}
 
@@ -2372,4 +2640,321 @@ void TemplateEngine::Foreach(TemplateEnvironment& environment, const TemplateCal
 
 void TemplateEngine::If(TemplateEnvironment& environment, const TemplateCall& call)
 {
+	struct IfData
+	{
+		bool m_Handled;
+	};
+
+	bool enter = false;
+
+	IfData* ifData;
+	if (call.m_Function == "End")
+	{
+		auto entry = environment.currentStack();
+		if (!entry || !entry->m_UserData)
+		{
+			std::cerr << "'" << call.m_Function << "' was hit, but stack was broken\n";
+			environment.exitScope();
+			return;
+		}
+		ifData = reinterpret_cast<IfData*>(entry->m_UserData);
+		environment.exitScope();
+		delete ifData;
+		return;
+	}
+	else if (call.m_Function == "Else" ||
+	         call.m_Function == "Elif" ||
+	         call.m_Function == "Elifn" ||
+	         call.m_Function == "Elifeq" ||
+	         call.m_Function == "Elfneq")
+	{
+		auto entry = environment.currentStack();
+		if (!entry || !entry->m_UserData)
+		{
+			std::cerr << "'" << call.m_Function << "' was hit, but stack was broken\n";
+			environment.exitScopes();
+			return;
+		}
+		ifData = reinterpret_cast<IfData*>(entry->m_UserData);
+
+		if (ifData->m_Handled)
+		{
+			// Jump to last scope end
+			environment.exitScopes();
+			delete ifData;
+			return;
+		}
+	}
+	else
+	{
+		ifData = new IfData { false };
+		environment.setStackUserData(ifData);
+	}
+
+	if (call.m_Function == "If" ||
+	    call.m_Function == "Elif")
+	{
+		// Checks if argument is non zero (defined, non empty, non '0' int)
+		auto macro = environment.getMacro(call.m_Arguments[0]);
+		if (macro)
+		{
+			if (macro->m_Type == ETemplateMacroType::Ref)
+				macro = std::get<TemplateMacro*>(macro->m_Value);
+
+			switch (macro->m_Type)
+			{
+			case ETemplateMacroType::Int:
+				enter = std::get<std::int64_t>(macro->m_Value) != 0;
+				break;
+			case ETemplateMacroType::UInt:
+				enter = std::get<std::uint64_t>(macro->m_Value) != 0;
+				break;
+			case ETemplateMacroType::Text:
+				enter = !std::get<std::string>(macro->m_Value).empty();
+				break;
+			case ETemplateMacroType::Array:
+				enter = !std::get<std::vector<TemplateMacro>>(macro->m_Value).empty();
+				break;
+			case ETemplateMacroType::Struct:
+				enter = !std::get<std::unordered_map<std::string, TemplateMacro>>(macro->m_Value).empty();
+				break;
+			}
+		}
+	}
+	else if (call.m_Function == "Ifn" ||
+	         call.m_Function == "Elifn")
+	{
+		// Checks if argument is zero (not defined, empty, '0' int)
+		auto macro = environment.getMacro(call.m_Arguments[0]);
+		if (macro)
+		{
+			if (macro->m_Type == ETemplateMacroType::Ref)
+				macro = std::get<TemplateMacro*>(macro->m_Value);
+
+			switch (macro->m_Type)
+			{
+			case ETemplateMacroType::Int:
+				enter = std::get<std::int64_t>(macro->m_Value) == 0;
+				break;
+			case ETemplateMacroType::UInt:
+				enter = std::get<std::uint64_t>(macro->m_Value) == 0;
+				break;
+			case ETemplateMacroType::Text:
+				enter = std::get<std::string>(macro->m_Value).empty();
+				break;
+			case ETemplateMacroType::Array:
+				enter = std::get<std::vector<TemplateMacro>>(macro->m_Value).empty();
+				break;
+			case ETemplateMacroType::Struct:
+				enter = std::get<std::unordered_map<std::string, TemplateMacro>>(macro->m_Value).empty();
+				break;
+			}
+		}
+		else
+		{
+			enter = true;
+		}
+	}
+	else if (call.m_Function == "Ifeq" ||
+	         call.m_Function == "Elifeq")
+	{
+		auto macro = environment.getMacro(call.m_Arguments[0]);
+		if (macro)
+		{
+			if (macro->m_Type == ETemplateMacroType::Ref)
+				macro = std::get<TemplateMacro*>(macro->m_Value);
+
+			auto& text = call.m_Arguments[1];
+			switch (macro->m_Type)
+			{
+			case ETemplateMacroType::Int:
+				enter = std::get<std::int64_t>(macro->m_Value) == std::strtoll(text.data(), nullptr, 10);
+				break;
+			case ETemplateMacroType::UInt:
+				enter = std::get<std::uint64_t>(macro->m_Value) == std::strtoull(text.data(), nullptr, 10);
+				break;
+			case ETemplateMacroType::Text:
+				enter = std::get<std::string>(macro->m_Value) == text;
+				break;
+			}
+		}
+	}
+	else if (call.m_Function == "Ifeqn" ||
+	         call.m_Function == "Elifeqn")
+	{
+		auto macro = environment.getMacro(call.m_Arguments[0]);
+		if (macro)
+		{
+			if (macro->m_Type == ETemplateMacroType::Ref)
+				macro = std::get<TemplateMacro*>(macro->m_Value);
+
+			auto& text = call.m_Arguments[1];
+			switch (macro->m_Type)
+			{
+			case ETemplateMacroType::Int:
+				enter = std::get<std::int64_t>(macro->m_Value) != std::strtoll(text.data(), nullptr, 10);
+				break;
+			case ETemplateMacroType::UInt:
+				enter = std::get<std::uint64_t>(macro->m_Value) != std::strtoull(text.data(), nullptr, 10);
+				break;
+			case ETemplateMacroType::Text:
+				enter = std::get<std::string>(macro->m_Value) != text;
+				break;
+			}
+		}
+		else
+		{
+			enter = true;
+		}
+	}
+	else if (call.m_Function == "Else")
+	{
+		enter = true;
+	}
+	else
+	{
+		std::cerr << "WTF ARE YOU DOING!\n";
+		return;
+	}
+
+	if (enter)
+		ifData->m_Handled = true;
+	else
+		environment.nextScope();
+}
+
+void TemplateEngine::Add(TemplateEnvironment& environment, const TemplateCall& call)
+{
+	if (call.m_Arguments.size() < 2)
+	{
+		std::cerr << "'Add' requires 2 arguments!!\n";
+		return;
+	}
+
+	auto macro = environment.getMacro(call.m_Arguments[0]);
+	if (!macro)
+		macro = environment.assignIntMacro(call.m_Arguments[0], 0);
+
+	if (macro->m_Type != ETemplateMacroType::Int &&
+	    macro->m_Type != ETemplateMacroType::UInt)
+	{
+		std::cerr << "Macro '" << call.m_Arguments[0] << "' is not a numeric macro!!\n";
+		return;
+	}
+
+	std::string str = call.m_Arguments[1];
+	environment.resolveReferences(str);
+	switch (macro->m_Type)
+	{
+	case ETemplateMacroType::Int:
+		std::get<std::int64_t>(macro->m_Value) += std::strtoll(str.data(), nullptr, 10);
+		break;
+	case ETemplateMacroType::UInt:
+		std::get<std::uint64_t>(macro->m_Value) += std::strtoull(str.data(), nullptr, 10);
+		break;
+	}
+}
+
+void TemplateEngine::LoadObject(TemplateEnvironment& environment, const TemplateCall& call)
+{
+	std::string objectFile = call.m_Arguments[1].substr(1, call.m_Arguments[1].size() - 2);
+	EscapeString(objectFile, environment.m_Engine->m_EscapeCharacter);
+	std::filesystem::path objectFilepath = objectFile;
+
+	if (!std::filesystem::exists(objectFilepath))
+	{
+		std::cerr << "'" << objectFilepath << "' doesn't exist!!\n";
+		return;
+	}
+
+	auto& type = call.m_Arguments[2];
+	if (type == "json")
+	{
+		Json::Value root;
+		{
+			std::ifstream file(objectFilepath);
+			if (!file)
+			{
+				std::cerr << "Failed to open '" << objectFilepath << "'\n";
+				return;
+			}
+			file >> root;
+		}
+
+		// Convert json object to macros
+		auto rootMacro = environment.assignStructMacro(call.m_Arguments[0]);
+	}
+	else
+	{
+		std::cerr << "'" << type << "' Unknown object type!!\n";
+		return;
+	}
+}
+
+void TemplateEngine::CallTemplate(TemplateEnvironment& environment, const TemplateCall& call)
+{
+	TemplateEnvironment subEnvironment;
+
+	for (std::size_t i = 2; i < call.m_Arguments.size(); ++i)
+	{
+		auto&       arg    = call.m_Arguments[i];
+		std::size_t equals = arg.find_first_of('=');
+		if (equals < arg.size())
+		{
+			// Set new macro name
+			std::string_view name      = std::string_view { arg }.substr(0, equals);
+			std::string_view macroName = std::string_view { arg }.substr(equals + 1);
+			auto             macro     = environment.getMacro(macroName);
+			if (!macro)
+			{
+				std::cerr << "'" << call.m_Arguments[0] << "' is not an assigned macro\n";
+				continue;
+			}
+			subEnvironment.assignRefMacro(name, *macro);
+		}
+		else
+		{
+			auto macro = environment.getMacro(arg);
+			if (!macro)
+			{
+				std::cerr << "'" << arg << "' is not an assigned macro\n";
+				continue;
+			}
+			subEnvironment.assignRefMacro(arg, *macro);
+		}
+	}
+
+	auto& target = call.m_Arguments[0];
+
+	char previousCommandChar     = environment.m_Engine->m_CommandChar;
+	char previousOpenReference   = environment.m_Engine->m_OpenReference;
+	char previousCloseReference  = environment.m_Engine->m_CloseReference;
+	char previousEscapeCharacter = environment.m_Engine->m_EscapeCharacter;
+
+	std::string templateFile = call.m_Arguments[1].substr(1, call.m_Arguments[1].size() - 2);
+	EscapeString(templateFile, previousEscapeCharacter);
+	auto result = environment.m_Engine->executeTemplate(templateFile, subEnvironment);
+
+	environment.m_Engine->m_CommandChar     = previousCommandChar;
+	environment.m_Engine->m_OpenReference   = previousOpenReference;
+	environment.m_Engine->m_CloseReference  = previousCloseReference;
+	environment.m_Engine->m_EscapeCharacter = previousEscapeCharacter;
+
+	if (target == "Insert")
+	{
+		environment.insertText(result, true);
+	}
+	else if (target.starts_with("\"") && target.ends_with("\""))
+	{
+		std::string str = target.substr(1, target.size() - 2);
+		EscapeString(str, environment.m_Engine->m_EscapeCharacter);
+		std::filesystem::path path = str;
+		std::filesystem::create_directories(path.parent_path());
+		std::ofstream file { path };
+		if (file)
+		{
+			file.write(result.data(), result.size());
+			file.close();
+		}
+	}
 }
