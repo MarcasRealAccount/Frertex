@@ -4,8 +4,6 @@ libs.frertex = libs.frertex or {
 	location = ""
 }
 
-require("../ThirdParty/fmt")
-
 local frertex = libs.frertex
 
 function frertex:setup()
@@ -22,12 +20,12 @@ function frertex:setup()
 		self.location .. "/Src/**"
 	})
 
-	libs.fmt:setupDep()
+	pkgdeps({ "fmt" })
 end
 
 function frertex:setupDep()
 	links({ self.name })
 	externalincludedirs({ self.location .. "/Inc/" })
 
-	libs.fmt:setupDep()
+	pkgdeps({ "fmt" })
 end

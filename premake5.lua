@@ -1,7 +1,4 @@
-require("Premake/Common")
-
-require("Premake/ThirdParty/fmt")
-require("Premake/Libs/frertex")
+require("Premake/frertex")
 
 workspace("Frertex")
 	common:setConfigsAndPlatforms()
@@ -13,13 +10,6 @@ workspace("Frertex")
 	flags("MultiProcessorCompile")
 
 	startproject("Frertex")
-
-	group("Dependencies")
-	project("FMT")
-		location("ThirdParty/FMT/")
-		warnings("Off")
-		libs.fmt:setup()
-		location("ThirdParty/")
 
 	group("Libs")
 	project("Frertex")

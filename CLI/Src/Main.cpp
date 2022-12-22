@@ -2,7 +2,7 @@
 
 #include <Frertex/Compiler.h>
 #include <Frertex/FIL.h>
-#include <Frertex/Lexer.h>
+#include <Frertex/Parser.h>
 #include <Frertex/Preprocessor.h>
 #include <Frertex/Tokenizer.h>
 #include <Frertex/Transpilers/SPIRVTranspiler.h>
@@ -315,14 +315,14 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 	//std::cout << str.str() << "\n";
 
 	timer.begin();
-	Frertex::Lexer lexer { &sources };
-	auto           ast = lexer.lex(std::move(tokens));
+	Frertex::Parser parser { &sources };
+	auto            ast = parser.lex(std::move(tokens));
 	timer.end();
-	times << timer.formatTime("Lexer");
+	times << timer.formatTime("Parser");
 
-	if (!lexer.getMessages().empty())
+	if (!parser.getMessages().empty())
 	{
-		for (auto& message : lexer.getMessages())
+		for (auto& message : parser.getMessages())
 		{
 			std::string output = Frertex::FormatMessage(
 			    message,
