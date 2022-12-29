@@ -1,6 +1,0 @@
-[submodule "ThirdParty/FMT"]
-	path = ThirdParty/FMT
-	url = https://github.com/fmtlib/fmt.git
-[submodule "ThirdParty/jsoncpp"]
-	path = ThirdParty/jsoncpp
-	url = https://github.com/open-source-parsers/jsoncpp.git

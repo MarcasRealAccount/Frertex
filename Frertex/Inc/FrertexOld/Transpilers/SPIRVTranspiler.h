@@ -8,19 +8,17 @@
 #include "SPIR-V/CodeBuffer.h"
 
 #include <fmt/format.h>
-
 #include <set>
 #include <unordered_map>
 
 namespace Frertex::Transpilers::SPIRV
 {
 	template <class F, class R, class... Args>
-	concept CallableWith = requires(F f, Args&&... args)
-	{
-		{
-			f(std::forward<Args>(args)...)
-			} -> std::convertible_to<R>;
-	};
+	concept CallableWith = requires(F f, Args&&... args) {
+		                       {
+			                       f(std::forward<Args>(args)...)
+			                       } -> std::convertible_to<R>;
+	                       };
 
 	struct SPIRV
 	{

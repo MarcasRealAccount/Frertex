@@ -10,10 +10,9 @@
 namespace Frertex::Utils
 {
 	template <class T, class U>
-	concept ConstructibleFrom = requires(T t)
-	{
-		U { t };
-	};
+	concept ConstructibleFrom = requires(T t) {
+		                            U { t };
+	                            };
 
 	template <class T>
 	struct CopyMovable

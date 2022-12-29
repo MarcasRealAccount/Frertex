@@ -1,8 +1,4 @@
-require("Premake/Common")
-
-require("Premake/ThirdParty/fmt")
-require("Premake/ThirdParty/jsoncpp")
-require("Premake/Libs/frertex")
+require("Premake/frertex")
 
 workspace("Frertex")
 	common:setConfigsAndPlatforms()
@@ -14,19 +10,6 @@ workspace("Frertex")
 	flags("MultiProcessorCompile")
 
 	startproject("CLI")
-
-	group("Dependencies")
-	project("FMT")
-		location("ThirdParty/FMT/")
-		warnings("Off")
-		libs.fmt:setup()
-		location("ThirdParty/")
-
-	project("jsoncpp")
-		location("ThirdParty/jsoncpp/")
-		warnings("Off")
-		libs.jsoncpp:setup()
-		location("ThirdParty/")
 
 	group("Libs")
 	project("Frertex")
@@ -74,6 +57,6 @@ workspace("Frertex")
 		files({ "%{prj.location}/Src/**" })
 		removefiles({ "*.DS_Store" })
 
-		libs.jsoncpp:setupDep()
+		pkgdeps({ "simdjson@3.0.1" })
 
 		common:addActions()
