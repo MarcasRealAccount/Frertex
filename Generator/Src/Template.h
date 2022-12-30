@@ -47,13 +47,29 @@ public:
 
 enum class ETemplateMacroType : std::uint32_t
 {
+	Null,
+	Bool,
 	Int,
 	UInt,
+	Float,
 	Text,
 	Array,
 	Struct,
 	Ref
 };
+
+struct TemplateMacro;
+using TemplateMacroArrayType  = std::vector<TemplateMacro>;
+using TemplateMacroStructType = std::unordered_map<std::string, TemplateMacro>;
+
+template <class T>
+concept TemplateMacroTypeConcept = std::is_integral_v<T> ||
+								   std::is_floating_point_v<T> ||
+								   std::is_same_v<T, std::string_view> ||
+								   std::is_same_v<T, std::string> ||
+								   std::is_same_v<T, TemplateMacroArrayType> ||
+								   std::is_same_v<T, TemplateMacroStructType> ||
+								   std::is_same_v<T, TemplateMacro>;
 
 struct TemplateMacro
 {
@@ -66,14 +82,20 @@ public:
 	void popFront();
 	void popBack();
 
+	TemplateMacro* assignNullMacro(std::size_t index);
+	TemplateMacro* assignBoolMacro(std::size_t index, bool value);
 	TemplateMacro* assignIntMacro(std::size_t index, std::int64_t value);
 	TemplateMacro* assignUIntMacro(std::size_t index, std::uint64_t value);
+	TemplateMacro* assignFloatMacro(std::size_t index, double value);
 	TemplateMacro* assignTextMacro(std::size_t index, std::string_view value);
 	TemplateMacro* assignArrayMacro(std::size_t index);
 	TemplateMacro* assignStructMacro(std::size_t index);
 	TemplateMacro* assignRefMacro(std::size_t index, TemplateMacro& value);
+	TemplateMacro* assignNullMacro(std::string_view name);
+	TemplateMacro* assignBoolMacro(std::string_view name, bool value);
 	TemplateMacro* assignIntMacro(std::string_view name, std::int64_t value);
 	TemplateMacro* assignUIntMacro(std::string_view name, std::uint64_t value);
+	TemplateMacro* assignFloatMacro(std::string_view name, double value);
 	TemplateMacro* assignTextMacro(std::string_view name, std::string_view value);
 	TemplateMacro* assignArrayMacro(std::string_view name);
 	TemplateMacro* assignStructMacro(std::string_view name);
@@ -88,14 +110,16 @@ public:
 	void remove(std::string_view name);
 
 public:
-	ETemplateMacroType m_Type;
-	std::variant<std::int64_t,
-	             std::uint64_t,
-	             std::string,
-	             std::vector<TemplateMacro>,
-	             std::unordered_map<std::string, TemplateMacro>,
-	             TemplateMacro*>
-	    m_Value;
+	ETemplateMacroType m_Type = ETemplateMacroType::Null;
+	std::variant<bool,
+				 std::int64_t,
+				 std::uint64_t,
+				 double,
+				 std::string,
+				 std::vector<TemplateMacro>,
+				 std::unordered_map<std::string, TemplateMacro>,
+				 TemplateMacro*>
+		m_Value;
 };
 
 struct TemplateCallStackEntry
@@ -138,8 +162,11 @@ public:
 	void jumpToStartOfScope();
 	void jump(std::size_t call);
 
+	TemplateMacro* assignNullMacro(std::string_view name);
+	TemplateMacro* assignBoolMacro(std::string_view name, bool value);
 	TemplateMacro* assignIntMacro(std::string_view name, std::int64_t value);
 	TemplateMacro* assignUIntMacro(std::string_view name, std::uint64_t value);
+	TemplateMacro* assignFloatMacro(std::string_view name, double value);
 	TemplateMacro* assignTextMacro(std::string_view name, std::string_view value);
 	TemplateMacro* assignArrayMacro(std::string_view name);
 	TemplateMacro* assignStructMacro(std::string_view name);
@@ -150,14 +177,23 @@ public:
 
 	void removeMacro(std::string_view name);
 
-	auto  getEngine() const { return m_Engine; }
-	auto  getTemplate() const { return m_Template; }
+	auto getEngine() const { return m_Engine; }
+
+	auto getTemplate() const { return m_Template; }
+
+	auto& getCWD() const { return m_CWD; }
+
 	auto& getSource() const { return m_Source; }
-	auto  getOffset() const { return m_Offset; }
+
+	auto getOffset() const { return m_Offset; }
+
 	auto& getMacros() const { return m_Macros; }
+
 	auto& getCallStack() const { return m_CallStack; }
-	auto  getCurrentCallIndex() const { return m_CurrentCall; }
-	auto  getCurrentLastCallIndex() const { return m_CurrentLastCall; }
+
+	auto getCurrentCallIndex() const { return m_CurrentCall; }
+
+	auto getCurrentLastCallIndex() const { return m_CurrentLastCall; }
 
 private:
 	void pushScope(std::size_t scopeIndex);
@@ -167,6 +203,7 @@ private:
 	TemplateEngine* m_Engine   = nullptr;
 	const Template* m_Template = nullptr;
 
+	std::string m_CWD;
 	std::string m_Source;
 	std::size_t m_Offset = 0;
 
@@ -188,11 +225,17 @@ public:
 
 public:
 	TemplateFunction(Callback callback, const std::string& lastCall = "", const std::vector<std::string>& interCalls = {})
-	    : m_Callback(callback), m_InterCalls(interCalls), m_LastCall(lastCall) {}
+		: m_Callback(callback),
+		  m_InterCalls(interCalls),
+		  m_LastCall(lastCall) {}
+
 	TemplateFunction(Callback callback, std::string&& lastCall, std::vector<std::string>&& interCalls = {})
-	    : m_Callback(callback), m_InterCalls(std::move(interCalls)), m_LastCall(std::move(lastCall)) {}
+		: m_Callback(callback),
+		  m_InterCalls(std::move(interCalls)),
+		  m_LastCall(std::move(lastCall)) {}
 
 	bool hasInterCalls() const { return !m_InterCalls.empty(); }
+
 	bool hasLastCall() const { return !m_LastCall.empty(); }
 
 public:
@@ -244,8 +287,13 @@ private:
 
 	static void Cast(TemplateEnvironment& environment, const TemplateCall& call);
 
+	static void Function(TemplateEnvironment& environment, const TemplateCall& call);
+	static void Return(TemplateEnvironment& environment, const TemplateCall& call);
+
 	static void For(TemplateEnvironment& environment, const TemplateCall& call);
 	static void Foreach(TemplateEnvironment& environment, const TemplateCall& call);
+	static void Break(TemplateEnvironment& environment, const TemplateCall& call);
+	static void Continue(TemplateEnvironment& environment, const TemplateCall& call);
 
 	static void If(TemplateEnvironment& environment, const TemplateCall& call);
 
@@ -253,6 +301,7 @@ private:
 
 	static void LoadObject(TemplateEnvironment& environment, const TemplateCall& call);
 	static void CallTemplate(TemplateEnvironment& environment, const TemplateCall& call);
+	static void Dofile(TemplateEnvironment& environment, const TemplateCall& call);
 
 private:
 	char m_CommandChar     = '$';

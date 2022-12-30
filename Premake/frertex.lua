@@ -24,12 +24,12 @@ function frertex:setup()
 		self.location .. "/Src/Old/**"
 	})
 
-	pkgdeps({ "fmt" })
+	pkgdeps({ "fmt@9.1.0" })
 end
 
 function frertex:setupDep()
 	links({ self.name })
 	externalincludedirs({ self.location .. "/Inc/" })
 
-	pkgdeps({ "fmt" })
+	pkgdeps({ "fmt@9.1.0" })
 end

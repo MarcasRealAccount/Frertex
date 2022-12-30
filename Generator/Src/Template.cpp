@@ -1,6 +1,6 @@
 #include "Template.h"
 
-#include <json/json.h>
+#include <simdjson.h>
 
 #include <filesystem>
 #include <fstream>
@@ -47,26 +47,49 @@ void EscapeString(std::string& str, char escapeCharacter = '\\')
 	}
 }
 
+ETemplateMacroType CheckText(std::string_view str)
+{
+	if (str == "true" || str == "false")
+		return ETemplateMacroType::Bool;
+	if (str == "null")
+		return ETemplateMacroType::Null;
+	return ETemplateMacroType::Text;
+}
+
+ETemplateMacroType CheckTextForNumber(std::string_view str, bool signed_ = false)
+{
+	bool hasDecimalPoint = false;
+	for (std::size_t i = 0; i < str.size(); ++i)
+	{
+		if (hasDecimalPoint)
+		{
+			if (!std::isdigit(str[i]))
+				return ETemplateMacroType::Text;
+		}
+		else
+		{
+			if (str[i] == '.')
+				hasDecimalPoint = true;
+			else if (!std::isdigit(str[i]))
+				return CheckText(str);
+		}
+	}
+	if (hasDecimalPoint)
+		return ETemplateMacroType::Float;
+	if (signed_)
+		return ETemplateMacroType::Int;
+	return ETemplateMacroType::UInt;
+}
+
 ETemplateMacroType TemplateMacro::GetBestType(std::string_view str)
 {
-	// Check if str is a number
+	// If str is empty, the type is Text
 	if (str.empty())
 		return ETemplateMacroType::Text;
 
 	if (str[0] == '-')
-	{
-		// str might be a negative number
-		for (std::size_t i = 0; i < str.size(); ++i)
-			if (!std::isdigit(str[i]))
-				return ETemplateMacroType::Text;
-		return ETemplateMacroType::Int;
-	}
-
-	// str might be a positive number
-	for (std::size_t i = 0; i < str.size(); ++i)
-		if (!std::isdigit(str[i]))
-			return ETemplateMacroType::Text;
-	return ETemplateMacroType::UInt;
+		return CheckTextForNumber(str.substr(1), true);
+	return CheckTextForNumber(str);
 }
 
 void TemplateMacro::pushFront(TemplateMacro& value)
@@ -130,6 +153,56 @@ void TemplateMacro::popBack()
 	arr.pop_back();
 }
 
+TemplateMacro* TemplateMacro::assignNullMacro(std::size_t index)
+{
+	if (m_Type == ETemplateMacroType::Ref)
+	{
+		auto ptr = std::get<TemplateMacro*>(m_Value);
+		if (ptr->m_Type != ETemplateMacroType::Array)
+			return nullptr;
+
+		auto& arr = std::get<std::vector<TemplateMacro>>(ptr->m_Value);
+		if (index >= arr.size())
+			arr.resize(index + 1);
+		arr[index] = { ETemplateMacroType::Null, false };
+		return &arr[index];
+	}
+
+	if (m_Type != ETemplateMacroType::Array)
+		return nullptr;
+
+	auto& arr = std::get<std::vector<TemplateMacro>>(m_Value);
+	if (index >= arr.size())
+		arr.resize(index + 1);
+	arr[index] = { ETemplateMacroType::Null, false };
+	return &arr[index];
+}
+
+TemplateMacro* TemplateMacro::assignBoolMacro(std::size_t index, bool value)
+{
+	if (m_Type == ETemplateMacroType::Ref)
+	{
+		auto ptr = std::get<TemplateMacro*>(m_Value);
+		if (ptr->m_Type != ETemplateMacroType::Array)
+			return nullptr;
+
+		auto& arr = std::get<std::vector<TemplateMacro>>(ptr->m_Value);
+		if (index >= arr.size())
+			arr.resize(index + 1);
+		arr[index] = { ETemplateMacroType::Bool, value };
+		return &arr[index];
+	}
+
+	if (m_Type != ETemplateMacroType::Array)
+		return nullptr;
+
+	auto& arr = std::get<std::vector<TemplateMacro>>(m_Value);
+	if (index >= arr.size())
+		arr.resize(index + 1);
+	arr[index] = { ETemplateMacroType::Bool, value };
+	return &arr[index];
+}
+
 TemplateMacro* TemplateMacro::assignIntMacro(std::size_t index, std::int64_t value)
 {
 	if (m_Type == ETemplateMacroType::Ref)
@@ -177,6 +250,31 @@ TemplateMacro* TemplateMacro::assignUIntMacro(std::size_t index, std::uint64_t v
 	if (index >= arr.size())
 		arr.resize(index + 1);
 	arr[index] = { ETemplateMacroType::UInt, value };
+	return &arr[index];
+}
+
+TemplateMacro* TemplateMacro::assignFloatMacro(std::size_t index, double value)
+{
+	if (m_Type == ETemplateMacroType::Ref)
+	{
+		auto ptr = std::get<TemplateMacro*>(m_Value);
+		if (ptr->m_Type != ETemplateMacroType::Array)
+			return nullptr;
+
+		auto& arr = std::get<std::vector<TemplateMacro>>(ptr->m_Value);
+		if (index >= arr.size())
+			arr.resize(index + 1);
+		arr[index] = { ETemplateMacroType::Float, value };
+		return &arr[index];
+	}
+
+	if (m_Type != ETemplateMacroType::Array)
+		return nullptr;
+
+	auto& arr = std::get<std::vector<TemplateMacro>>(m_Value);
+	if (index >= arr.size())
+		arr.resize(index + 1);
+	arr[index] = { ETemplateMacroType::Float, value };
 	return &arr[index];
 }
 
@@ -280,6 +378,154 @@ TemplateMacro* TemplateMacro::assignRefMacro(std::size_t index, TemplateMacro& v
 	return &arr[index];
 }
 
+TemplateMacro* TemplateMacro::assignNullMacro(std::string_view name)
+{
+	if (m_Type == ETemplateMacroType::Ref)
+		return std::get<TemplateMacro*>(m_Value)->assignNullMacro(name);
+
+	if (m_Type != ETemplateMacroType::Struct)
+		return nullptr;
+
+	std::size_t dot            = name.find_first_of('.');
+	std::size_t subscriptStart = name.find_first_of('[');
+	std::size_t firstNameEnd   = std::min(dot, subscriptStart);
+
+	std::string_view firstName = name.substr(0, firstNameEnd);
+
+	auto& map = std::get<std::unordered_map<std::string, TemplateMacro>>(m_Value);
+	auto  itr = std::find_if(map.begin(),
+                            map.end(),
+                            [firstName](const std::pair<std::string, TemplateMacro>& a) {
+                                return a.first == firstName;
+                            });
+	if (itr == map.end())
+	{
+		if (dot < subscriptStart)
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
+		else if (subscriptStart < name.size())
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
+		else
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Null, false }
+            })
+					  .first;
+	}
+
+	if (firstNameEnd >= name.size())
+	{
+		itr->second.m_Type  = ETemplateMacroType::Null;
+		itr->second.m_Value = false;
+		return &itr->second;
+	}
+	else
+	{
+		if (dot < subscriptStart)
+		{
+			return itr->second.assignNullMacro(name.substr(firstNameEnd + 1));
+		}
+		else
+		{
+			std::size_t      subscriptEnd = name.find_first_of(']', subscriptStart + 1);
+			std::string_view subscript    = name.substr(subscriptStart + 1, subscriptEnd - subscriptStart - 1);
+			std::size_t      index        = std::strtoull(subscript.data(), nullptr, 10);
+			if (dot < name.size())
+			{
+				auto str = itr->second.assignStructMacro(index);
+				if (!str)
+					return nullptr;
+				return str->assignNullMacro(name.substr(dot + 1));
+			}
+			else
+			{
+				return itr->second.assignNullMacro(index);
+			}
+		}
+	}
+}
+
+TemplateMacro* TemplateMacro::assignBoolMacro(std::string_view name, bool value)
+{
+	if (m_Type == ETemplateMacroType::Ref)
+		return std::get<TemplateMacro*>(m_Value)->assignBoolMacro(name, value);
+
+	if (m_Type != ETemplateMacroType::Struct)
+		return nullptr;
+
+	std::size_t dot            = name.find_first_of('.');
+	std::size_t subscriptStart = name.find_first_of('[');
+	std::size_t firstNameEnd   = std::min(dot, subscriptStart);
+
+	std::string_view firstName = name.substr(0, firstNameEnd);
+
+	auto& map = std::get<std::unordered_map<std::string, TemplateMacro>>(m_Value);
+	auto  itr = std::find_if(map.begin(),
+                            map.end(),
+                            [firstName](const std::pair<std::string, TemplateMacro>& a) {
+                                return a.first == firstName;
+                            });
+	if (itr == map.end())
+	{
+		if (dot < subscriptStart)
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
+		else if (subscriptStart < name.size())
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
+		else
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Bool, false }
+            })
+					  .first;
+	}
+
+	if (firstNameEnd >= name.size())
+	{
+		itr->second.m_Type  = ETemplateMacroType::Bool;
+		itr->second.m_Value = value;
+		return &itr->second;
+	}
+	else
+	{
+		if (dot < subscriptStart)
+		{
+			return itr->second.assignBoolMacro(name.substr(firstNameEnd + 1), value);
+		}
+		else
+		{
+			std::size_t      subscriptEnd = name.find_first_of(']', subscriptStart + 1);
+			std::string_view subscript    = name.substr(subscriptStart + 1, subscriptEnd - subscriptStart - 1);
+			std::size_t      index        = std::strtoull(subscript.data(), nullptr, 10);
+			if (dot < name.size())
+			{
+				auto str = itr->second.assignStructMacro(index);
+				if (!str)
+					return nullptr;
+				return str->assignBoolMacro(name.substr(dot + 1), value);
+			}
+			else
+			{
+				return itr->second.assignBoolMacro(index, value);
+			}
+		}
+	}
+}
+
 TemplateMacro* TemplateMacro::assignIntMacro(std::string_view name, std::int64_t value)
 {
 	if (m_Type == ETemplateMacroType::Ref)
@@ -296,19 +542,30 @@ TemplateMacro* TemplateMacro::assignIntMacro(std::string_view name, std::int64_t
 
 	auto& map = std::get<std::unordered_map<std::string, TemplateMacro>>(m_Value);
 	auto  itr = std::find_if(map.begin(),
-	                         map.end(),
-	                         [firstName](const std::pair<std::string, TemplateMacro>& a)
-	                         {
+                            map.end(),
+                            [firstName](const std::pair<std::string, TemplateMacro>& a) {
                                 return a.first == firstName;
                             });
 	if (itr == map.end())
 	{
 		if (dot < subscriptStart)
-			itr = map.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} } }).first;
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
 		else if (subscriptStart < name.size())
-			itr = map.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} } }).first;
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
 		else
-			itr = map.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Int, 0LL } }).first;
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Int, 0LL }
+            })
+					  .first;
 	}
 
 	if (firstNameEnd >= name.size())
@@ -359,19 +616,30 @@ TemplateMacro* TemplateMacro::assignUIntMacro(std::string_view name, std::uint64
 
 	auto& map = std::get<std::unordered_map<std::string, TemplateMacro>>(m_Value);
 	auto  itr = std::find_if(map.begin(),
-	                         map.end(),
-	                         [firstName](const std::pair<std::string, TemplateMacro>& a)
-	                         {
+                            map.end(),
+                            [firstName](const std::pair<std::string, TemplateMacro>& a) {
                                 return a.first == firstName;
                             });
 	if (itr == map.end())
 	{
 		if (dot < subscriptStart)
-			itr = map.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} } }).first;
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
 		else if (subscriptStart < name.size())
-			itr = map.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} } }).first;
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
 		else
-			itr = map.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::UInt, 0ULL } }).first;
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::UInt, 0ULL }
+            })
+					  .first;
 	}
 
 	if (firstNameEnd >= name.size())
@@ -406,6 +674,80 @@ TemplateMacro* TemplateMacro::assignUIntMacro(std::string_view name, std::uint64
 	}
 }
 
+TemplateMacro* TemplateMacro::assignFloatMacro(std::string_view name, double value)
+{
+	if (m_Type == ETemplateMacroType::Ref)
+		return std::get<TemplateMacro*>(m_Value)->assignFloatMacro(name, value);
+
+	if (m_Type != ETemplateMacroType::Struct)
+		return nullptr;
+
+	std::size_t dot            = name.find_first_of('.');
+	std::size_t subscriptStart = name.find_first_of('[');
+	std::size_t firstNameEnd   = std::min(dot, subscriptStart);
+
+	std::string_view firstName = name.substr(0, firstNameEnd);
+
+	auto& map = std::get<std::unordered_map<std::string, TemplateMacro>>(m_Value);
+	auto  itr = std::find_if(map.begin(),
+                            map.end(),
+                            [firstName](const std::pair<std::string, TemplateMacro>& a) {
+                                return a.first == firstName;
+                            });
+	if (itr == map.end())
+	{
+		if (dot < subscriptStart)
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
+		else if (subscriptStart < name.size())
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
+		else
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Float, 0.0 }
+            })
+					  .first;
+	}
+
+	if (firstNameEnd >= name.size())
+	{
+		itr->second.m_Type  = ETemplateMacroType::UInt;
+		itr->second.m_Value = value;
+		return &itr->second;
+	}
+	else
+	{
+		if (dot < subscriptStart)
+		{
+			return itr->second.assignFloatMacro(name.substr(firstNameEnd + 1), value);
+		}
+		else
+		{
+			std::size_t      subscriptEnd = name.find_first_of(']', subscriptStart + 1);
+			std::string_view subscript    = name.substr(subscriptStart + 1, subscriptEnd - subscriptStart - 1);
+			std::size_t      index        = std::strtoull(subscript.data(), nullptr, 10);
+			if (dot < name.size())
+			{
+				auto str = itr->second.assignStructMacro(index);
+				if (!str)
+					return nullptr;
+				return str->assignFloatMacro(name.substr(dot + 1), value);
+			}
+			else
+			{
+				return itr->second.assignFloatMacro(index, value);
+			}
+		}
+	}
+}
+
 TemplateMacro* TemplateMacro::assignTextMacro(std::string_view name, std::string_view value)
 {
 	if (m_Type == ETemplateMacroType::Ref)
@@ -422,19 +764,30 @@ TemplateMacro* TemplateMacro::assignTextMacro(std::string_view name, std::string
 
 	auto& map = std::get<std::unordered_map<std::string, TemplateMacro>>(m_Value);
 	auto  itr = std::find_if(map.begin(),
-	                         map.end(),
-	                         [firstName](const std::pair<std::string, TemplateMacro>& a)
-	                         {
+                            map.end(),
+                            [firstName](const std::pair<std::string, TemplateMacro>& a) {
                                 return a.first == firstName;
                             });
 	if (itr == map.end())
 	{
 		if (dot < subscriptStart)
-			itr = map.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} } }).first;
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
 		else if (subscriptStart < name.size())
-			itr = map.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} } }).first;
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
 		else
-			itr = map.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Text, std::string {} } }).first;
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Text, std::string {} }
+            })
+					  .first;
 	}
 
 	if (firstNameEnd >= name.size())
@@ -485,19 +838,30 @@ TemplateMacro* TemplateMacro::assignArrayMacro(std::string_view name)
 
 	auto& map = std::get<std::unordered_map<std::string, TemplateMacro>>(m_Value);
 	auto  itr = std::find_if(map.begin(),
-	                         map.end(),
-	                         [firstName](const std::pair<std::string, TemplateMacro>& a)
-	                         {
+                            map.end(),
+                            [firstName](const std::pair<std::string, TemplateMacro>& a) {
                                 return a.first == firstName;
                             });
 	if (itr == map.end())
 	{
 		if (dot < subscriptStart)
-			itr = map.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} } }).first;
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
 		else if (subscriptStart < name.size())
-			itr = map.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} } }).first;
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
 		else
-			itr = map.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} } }).first;
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
 	}
 
 	if (firstNameEnd >= name.size())
@@ -546,19 +910,30 @@ TemplateMacro* TemplateMacro::assignStructMacro(std::string_view name)
 
 	auto& map = std::get<std::unordered_map<std::string, TemplateMacro>>(m_Value);
 	auto  itr = std::find_if(map.begin(),
-	                         map.end(),
-	                         [firstName](const std::pair<std::string, TemplateMacro>& a)
-	                         {
+                            map.end(),
+                            [firstName](const std::pair<std::string, TemplateMacro>& a) {
                                 return a.first == firstName;
                             });
 	if (itr == map.end())
 	{
 		if (dot < subscriptStart)
-			itr = map.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} } }).first;
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
 		else if (subscriptStart < name.size())
-			itr = map.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} } }).first;
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
 		else
-			itr = map.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} } }).first;
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
 	}
 
 	if (firstNameEnd >= name.size())
@@ -607,19 +982,30 @@ TemplateMacro* TemplateMacro::assignRefMacro(std::string_view name, TemplateMacr
 
 	auto& map = std::get<std::unordered_map<std::string, TemplateMacro>>(m_Value);
 	auto  itr = std::find_if(map.begin(),
-	                         map.end(),
-	                         [firstName](const std::pair<std::string, TemplateMacro>& a)
-	                         {
+                            map.end(),
+                            [firstName](const std::pair<std::string, TemplateMacro>& a) {
                                 return a.first == firstName;
                             });
 	if (itr == map.end())
 	{
 		if (dot < subscriptStart)
-			itr = map.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} } }).first;
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
 		else if (subscriptStart < name.size())
-			itr = map.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} } }).first;
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
 		else
-			itr = map.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Ref, nullptr } }).first;
+			itr = map.insert({
+								 std::string { firstName },
+								 TemplateMacro { ETemplateMacroType::Ref, nullptr }
+            })
+					  .first;
 	}
 
 	if (firstNameEnd >= name.size())
@@ -694,9 +1080,8 @@ TemplateMacro* TemplateMacro::get(std::string_view name)
 
 	auto& map = std::get<std::unordered_map<std::string, TemplateMacro>>(m_Value);
 	auto  itr = std::find_if(map.begin(),
-	                         map.end(),
-	                         [name](const std::pair<std::string, TemplateMacro>& a)
-	                         {
+                            map.end(),
+                            [name](const std::pair<std::string, TemplateMacro>& a) {
                                 return a.first == name;
                             });
 	if (itr == map.end())
@@ -749,9 +1134,8 @@ const TemplateMacro* TemplateMacro::get(std::string_view name) const
 
 	auto& map = std::get<std::unordered_map<std::string, TemplateMacro>>(m_Value);
 	auto  itr = std::find_if(map.begin(),
-	                         map.end(),
-	                         [name](const std::pair<std::string, TemplateMacro>& a)
-	                         {
+                            map.end(),
+                            [name](const std::pair<std::string, TemplateMacro>& a) {
                                 return a.first == name;
                             });
 	if (itr == map.end())
@@ -823,9 +1207,8 @@ void TemplateMacro::remove(std::string_view name)
 
 	auto& map = std::get<std::unordered_map<std::string, TemplateMacro>>(m_Value);
 	auto  itr = std::find_if(map.begin(),
-	                         map.end(),
-	                         [firstName](const std::pair<std::string, TemplateMacro>& a)
-	                         {
+                            map.end(),
+                            [firstName](const std::pair<std::string, TemplateMacro>& a) {
                                 return a.first == firstName;
                             });
 	if (itr == map.end())
@@ -901,7 +1284,7 @@ void TemplateEnvironment::resolveReferences(std::string& str)
 			break;
 		std::size_t referenceEnd = referenceStart;
 		state                    = 0;
-		referenceStart -= 2;
+		referenceStart           -= 2;
 		for (; state < 2 && referenceEnd < str.size(); ++referenceEnd)
 		{
 			if (str[referenceEnd] == '\\')
@@ -1163,6 +1546,140 @@ void TemplateEnvironment::jump(std::size_t call)
 	m_IncrementCall = false;
 }
 
+TemplateMacro* TemplateEnvironment::assignNullMacro(std::string_view name)
+{
+	std::size_t dot            = name.find_first_of('.');
+	std::size_t subscriptStart = name.find_first_of('[');
+	std::size_t firstNameEnd   = std::min(dot, subscriptStart);
+
+	std::string_view firstName = name.substr(0, firstNameEnd);
+
+	auto itr = std::find_if(m_Macros.begin(),
+							m_Macros.end(),
+							[firstName](const std::pair<std::string, TemplateMacro>& a) {
+								return a.first == firstName;
+							});
+	if (itr == m_Macros.end())
+	{
+		if (dot < subscriptStart)
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
+		else if (subscriptStart < name.size())
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
+		else
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Null, false }
+            })
+					  .first;
+	}
+
+	if (firstNameEnd >= name.size())
+	{
+		itr->second.m_Type  = ETemplateMacroType::Null;
+		itr->second.m_Value = false;
+		return &itr->second;
+	}
+	else
+	{
+		if (dot < subscriptStart)
+		{
+			return itr->second.assignNullMacro(name.substr(firstNameEnd + 1));
+		}
+		else
+		{
+			std::size_t      subscriptEnd = name.find_first_of(']', subscriptStart + 1);
+			std::string_view subscript    = name.substr(subscriptStart + 1, subscriptEnd - subscriptStart - 1);
+			std::size_t      index        = std::strtoull(subscript.data(), nullptr, 10);
+			if (dot < name.size())
+			{
+				auto str = itr->second.assignStructMacro(index);
+				if (!str)
+					return nullptr;
+				return str->assignNullMacro(name.substr(dot + 1));
+			}
+			else
+			{
+				return itr->second.assignNullMacro(index);
+			}
+		}
+	}
+}
+
+TemplateMacro* TemplateEnvironment::assignBoolMacro(std::string_view name, bool value)
+{
+	std::size_t dot            = name.find_first_of('.');
+	std::size_t subscriptStart = name.find_first_of('[');
+	std::size_t firstNameEnd   = std::min(dot, subscriptStart);
+
+	std::string_view firstName = name.substr(0, firstNameEnd);
+
+	auto itr = std::find_if(m_Macros.begin(),
+							m_Macros.end(),
+							[firstName](const std::pair<std::string, TemplateMacro>& a) {
+								return a.first == firstName;
+							});
+	if (itr == m_Macros.end())
+	{
+		if (dot < subscriptStart)
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
+		else if (subscriptStart < name.size())
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
+		else
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Bool, false }
+            })
+					  .first;
+	}
+
+	if (firstNameEnd >= name.size())
+	{
+		itr->second.m_Type  = ETemplateMacroType::Bool;
+		itr->second.m_Value = value;
+		return &itr->second;
+	}
+	else
+	{
+		if (dot < subscriptStart)
+		{
+			return itr->second.assignBoolMacro(name.substr(firstNameEnd + 1), value);
+		}
+		else
+		{
+			std::size_t      subscriptEnd = name.find_first_of(']', subscriptStart + 1);
+			std::string_view subscript    = name.substr(subscriptStart + 1, subscriptEnd - subscriptStart - 1);
+			std::size_t      index        = std::strtoull(subscript.data(), nullptr, 10);
+			if (dot < name.size())
+			{
+				auto str = itr->second.assignStructMacro(index);
+				if (!str)
+					return nullptr;
+				return str->assignBoolMacro(name.substr(dot + 1), value);
+			}
+			else
+			{
+				return itr->second.assignBoolMacro(index, value);
+			}
+		}
+	}
+}
+
 TemplateMacro* TemplateEnvironment::assignIntMacro(std::string_view name, std::int64_t value)
 {
 	std::size_t dot            = name.find_first_of('.');
@@ -1172,19 +1689,30 @@ TemplateMacro* TemplateEnvironment::assignIntMacro(std::string_view name, std::i
 	std::string_view firstName = name.substr(0, firstNameEnd);
 
 	auto itr = std::find_if(m_Macros.begin(),
-	                        m_Macros.end(),
-	                        [firstName](const std::pair<std::string, TemplateMacro>& a)
-	                        {
-		                        return a.first == firstName;
-	                        });
+							m_Macros.end(),
+							[firstName](const std::pair<std::string, TemplateMacro>& a) {
+								return a.first == firstName;
+							});
 	if (itr == m_Macros.end())
 	{
 		if (dot < subscriptStart)
-			itr = m_Macros.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} } }).first;
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
 		else if (subscriptStart < name.size())
-			itr = m_Macros.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} } }).first;
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
 		else
-			itr = m_Macros.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Int, 0LL } }).first;
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Int, 0LL }
+            })
+					  .first;
 	}
 
 	if (firstNameEnd >= name.size())
@@ -1228,19 +1756,30 @@ TemplateMacro* TemplateEnvironment::assignUIntMacro(std::string_view name, std::
 	std::string_view firstName = name.substr(0, firstNameEnd);
 
 	auto itr = std::find_if(m_Macros.begin(),
-	                        m_Macros.end(),
-	                        [firstName](const std::pair<std::string, TemplateMacro>& a)
-	                        {
-		                        return a.first == firstName;
-	                        });
+							m_Macros.end(),
+							[firstName](const std::pair<std::string, TemplateMacro>& a) {
+								return a.first == firstName;
+							});
 	if (itr == m_Macros.end())
 	{
 		if (dot < subscriptStart)
-			itr = m_Macros.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} } }).first;
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
 		else if (subscriptStart < name.size())
-			itr = m_Macros.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} } }).first;
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
 		else
-			itr = m_Macros.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::UInt, 0LL } }).first;
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::UInt, 0LL }
+            })
+					  .first;
 	}
 
 	if (firstNameEnd >= name.size())
@@ -1275,6 +1814,73 @@ TemplateMacro* TemplateEnvironment::assignUIntMacro(std::string_view name, std::
 	}
 }
 
+TemplateMacro* TemplateEnvironment::assignFloatMacro(std::string_view name, double value)
+{
+	std::size_t dot            = name.find_first_of('.');
+	std::size_t subscriptStart = name.find_first_of('[');
+	std::size_t firstNameEnd   = std::min(dot, subscriptStart);
+
+	std::string_view firstName = name.substr(0, firstNameEnd);
+
+	auto itr = std::find_if(m_Macros.begin(),
+							m_Macros.end(),
+							[firstName](const std::pair<std::string, TemplateMacro>& a) {
+								return a.first == firstName;
+							});
+	if (itr == m_Macros.end())
+	{
+		if (dot < subscriptStart)
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
+		else if (subscriptStart < name.size())
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
+		else
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Float, 0.0 }
+            })
+					  .first;
+	}
+
+	if (firstNameEnd >= name.size())
+	{
+		itr->second.m_Type  = ETemplateMacroType::Float;
+		itr->second.m_Value = value;
+		return &itr->second;
+	}
+	else
+	{
+		if (dot < subscriptStart)
+		{
+			return itr->second.assignFloatMacro(name.substr(firstNameEnd + 1), value);
+		}
+		else
+		{
+			std::size_t      subscriptEnd = name.find_first_of(']', subscriptStart + 1);
+			std::string_view subscript    = name.substr(subscriptStart + 1, subscriptEnd - subscriptStart - 1);
+			std::size_t      index        = std::strtoull(subscript.data(), nullptr, 10);
+			if (dot < name.size())
+			{
+				auto str = itr->second.assignStructMacro(index);
+				if (!str)
+					return nullptr;
+				return str->assignFloatMacro(name.substr(dot + 1), value);
+			}
+			else
+			{
+				return itr->second.assignFloatMacro(index, value);
+			}
+		}
+	}
+}
+
 TemplateMacro* TemplateEnvironment::assignTextMacro(std::string_view name, std::string_view value)
 {
 	std::size_t dot            = name.find_first_of('.');
@@ -1284,19 +1890,30 @@ TemplateMacro* TemplateEnvironment::assignTextMacro(std::string_view name, std::
 	std::string_view firstName = name.substr(0, firstNameEnd);
 
 	auto itr = std::find_if(m_Macros.begin(),
-	                        m_Macros.end(),
-	                        [firstName](const std::pair<std::string, TemplateMacro>& a)
-	                        {
-		                        return a.first == firstName;
-	                        });
+							m_Macros.end(),
+							[firstName](const std::pair<std::string, TemplateMacro>& a) {
+								return a.first == firstName;
+							});
 	if (itr == m_Macros.end())
 	{
 		if (dot < subscriptStart)
-			itr = m_Macros.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} } }).first;
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
 		else if (subscriptStart < name.size())
-			itr = m_Macros.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} } }).first;
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
 		else
-			itr = m_Macros.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Text, std::string {} } }).first;
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Text, std::string {} }
+            })
+					  .first;
 	}
 
 	if (firstNameEnd >= name.size())
@@ -1340,19 +1957,30 @@ TemplateMacro* TemplateEnvironment::assignArrayMacro(std::string_view name)
 	std::string_view firstName = name.substr(0, firstNameEnd);
 
 	auto itr = std::find_if(m_Macros.begin(),
-	                        m_Macros.end(),
-	                        [firstName](const std::pair<std::string, TemplateMacro>& a)
-	                        {
-		                        return a.first == firstName;
-	                        });
+							m_Macros.end(),
+							[firstName](const std::pair<std::string, TemplateMacro>& a) {
+								return a.first == firstName;
+							});
 	if (itr == m_Macros.end())
 	{
 		if (dot < subscriptStart)
-			itr = m_Macros.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} } }).first;
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
 		else if (subscriptStart < name.size())
-			itr = m_Macros.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} } }).first;
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
 		else
-			itr = m_Macros.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} } }).first;
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
 	}
 
 	if (firstNameEnd >= name.size())
@@ -1394,19 +2022,30 @@ TemplateMacro* TemplateEnvironment::assignStructMacro(std::string_view name)
 	std::string_view firstName = name.substr(0, firstNameEnd);
 
 	auto itr = std::find_if(m_Macros.begin(),
-	                        m_Macros.end(),
-	                        [firstName](const std::pair<std::string, TemplateMacro>& a)
-	                        {
-		                        return a.first == firstName;
-	                        });
+							m_Macros.end(),
+							[firstName](const std::pair<std::string, TemplateMacro>& a) {
+								return a.first == firstName;
+							});
 	if (itr == m_Macros.end())
 	{
 		if (dot < subscriptStart)
-			itr = m_Macros.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} } }).first;
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
 		else if (subscriptStart < name.size())
-			itr = m_Macros.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} } }).first;
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
 		else
-			itr = m_Macros.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} } }).first;
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
 	}
 
 	if (firstNameEnd >= name.size())
@@ -1448,19 +2087,30 @@ TemplateMacro* TemplateEnvironment::assignRefMacro(std::string_view name, Templa
 	std::string_view firstName = name.substr(0, firstNameEnd);
 
 	auto itr = std::find_if(m_Macros.begin(),
-	                        m_Macros.end(),
-	                        [firstName](const std::pair<std::string, TemplateMacro>& a)
-	                        {
-		                        return a.first == firstName;
-	                        });
+							m_Macros.end(),
+							[firstName](const std::pair<std::string, TemplateMacro>& a) {
+								return a.first == firstName;
+							});
 	if (itr == m_Macros.end())
 	{
 		if (dot < subscriptStart)
-			itr = m_Macros.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} } }).first;
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Struct, std::unordered_map<std::string, TemplateMacro> {} }
+            })
+					  .first;
 		else if (subscriptStart < name.size())
-			itr = m_Macros.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} } }).first;
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Array, std::vector<TemplateMacro> {} }
+            })
+					  .first;
 		else
-			itr = m_Macros.insert({ std::string { firstName }, TemplateMacro { ETemplateMacroType::Ref, nullptr } }).first;
+			itr = m_Macros.insert({
+									  std::string { firstName },
+									  TemplateMacro { ETemplateMacroType::Ref, nullptr }
+            })
+					  .first;
 	}
 
 	if (firstNameEnd >= name.size())
@@ -1504,11 +2154,10 @@ TemplateMacro* TemplateEnvironment::getMacro(std::string_view name)
 	std::string_view firstName = name.substr(0, firstNameEnd);
 
 	auto itr = std::find_if(m_Macros.begin(),
-	                        m_Macros.end(),
-	                        [firstName](const std::pair<std::string, TemplateMacro>& a)
-	                        {
-		                        return a.first == firstName;
-	                        });
+							m_Macros.end(),
+							[firstName](const std::pair<std::string, TemplateMacro>& a) {
+								return a.first == firstName;
+							});
 	if (itr == m_Macros.end())
 		return nullptr;
 
@@ -1584,11 +2233,10 @@ const TemplateMacro* TemplateEnvironment::getMacro(std::string_view name) const
 	std::string_view firstName = name.substr(0, firstNameEnd);
 
 	auto itr = std::find_if(m_Macros.begin(),
-	                        m_Macros.end(),
-	                        [firstName](const std::pair<std::string, TemplateMacro>& a)
-	                        {
-		                        return a.first == firstName;
-	                        });
+							m_Macros.end(),
+							[firstName](const std::pair<std::string, TemplateMacro>& a) {
+								return a.first == firstName;
+							});
 	if (itr == m_Macros.end())
 		return nullptr;
 
@@ -1664,11 +2312,10 @@ void TemplateEnvironment::removeMacro(std::string_view name)
 	std::string_view firstName = name.substr(0, firstNameEnd);
 
 	auto itr = std::find_if(m_Macros.begin(),
-	                        m_Macros.end(),
-	                        [firstName](const std::pair<std::string, TemplateMacro>& a)
-	                        {
-		                        return a.first == firstName;
-	                        });
+							m_Macros.end(),
+							[firstName](const std::pair<std::string, TemplateMacro>& a) {
+								return a.first == firstName;
+							});
 	if (itr == m_Macros.end())
 		return;
 
@@ -1761,11 +2408,11 @@ void TemplateEnvironment::pushScope(std::size_t scopeIndex)
 
 	const TemplateScope& scope = m_Template->m_Scopes[scopeIndex];
 	m_CallStack.emplace_back(TemplateCallStackEntry {
-	    &m_Template->m_Calls[scope.m_OpenCall],
-	    &m_Template->m_Calls[scope.m_CloseCall],
-	    &scope,
-	    scopeIndex,
-	    nullptr });
+		&m_Template->m_Calls[scope.m_OpenCall],
+		&m_Template->m_Calls[scope.m_CloseCall],
+		&scope,
+		scopeIndex,
+		nullptr });
 	m_CurrentScopeIndex = scopeIndex;
 	m_CurrentLastCall   = scope.m_CloseCall;
 }
@@ -1799,8 +2446,14 @@ TemplateEngine::TemplateEngine()
 
 	addFunction("Cast", { &Cast });
 
+	addFunction("Function", { &Function, "End" });
+	addFunction("Return", { &Return });
+
 	addFunction("For", { &For, "End" });
 	addFunction("Foreach", { &Foreach, "End" });
+	addFunction("Break", { &Break });
+	addFunction("Continue", { &Continue });
+
 	std::vector<std::string> ifStatements { "If", "Ifn", "Ifeq", "Ifneq" };
 	std::vector<std::string> elifStatements { "Else", "Elif", "Elifn", "Elifeq", "Elifneq" };
 	for (auto& ifStatement : ifStatements)
@@ -1808,7 +2461,9 @@ TemplateEngine::TemplateEngine()
 
 	addFunction("Add", { &Add });
 
+	addFunction("LoadObject", { &LoadObject });
 	addFunction("Template", { &CallTemplate });
+	addFunction("Dofile", { &Dofile });
 }
 
 std::string TemplateEngine::executeTemplate(std::string_view name, TemplateEnvironment& environment)
@@ -1817,17 +2472,17 @@ std::string TemplateEngine::executeTemplate(std::string_view name, TemplateEnvir
 	updateScopesAndFunctionLUT(name);
 
 	auto itr = std::find_if(m_Templates.begin(),
-	                        m_Templates.end(),
-	                        [name](const std::pair<std::string, Template>& a)
-	                        {
-		                        return a.first == name;
-	                        });
+							m_Templates.end(),
+							[name](const std::pair<std::string, Template>& a) {
+								return a.first == name;
+							});
 	if (itr == m_Templates.end())
 		return {};
 
 	environment.m_Engine   = this;
 	environment.m_Template = &itr->second;
 	environment.m_CallStack.clear();
+	environment.m_CWD    = name.substr(0, name.find_last_of('/'));
 	environment.m_Source = environment.m_Template->m_Text;
 	environment.m_CallStack.emplace_back(TemplateCallStackEntry { &environment.m_Template->m_Calls[0], nullptr, nullptr, ~0ULL, nullptr });
 	environment.m_CurrentLastCall = environment.m_Template->m_Calls.size();
@@ -1883,11 +2538,10 @@ std::string TemplateEngine::executeTemplate(std::string_view name, TemplateEnvir
 void TemplateEngine::addFunction(std::string_view name, TemplateFunction function)
 {
 	auto itr = std::find_if(m_Functions.begin(),
-	                        m_Functions.end(),
-	                        [name](const std::pair<std::string, TemplateFunction>& a)
-	                        {
-		                        return a.first == name;
-	                        });
+							m_Functions.end(),
+							[name](const std::pair<std::string, TemplateFunction>& a) {
+								return a.first == name;
+							});
 	if (itr != m_Functions.end())
 		return;
 
@@ -1903,11 +2557,10 @@ void TemplateEngine::addFunction(std::string_view name, TemplateFunction functio
 void TemplateEngine::removeFunction(std::string_view name)
 {
 	auto itr = std::find_if(m_Functions.begin(),
-	                        m_Functions.end(),
-	                        [name](const std::pair<std::string, TemplateFunction>& a)
-	                        {
-		                        return a.first == name;
-	                        });
+							m_Functions.end(),
+							[name](const std::pair<std::string, TemplateFunction>& a) {
+								return a.first == name;
+							});
 	if (itr != m_Functions.end())
 		m_Functions.erase(itr);
 
@@ -1921,11 +2574,10 @@ void TemplateEngine::removeFunction(std::string_view name)
 TemplateFunction* TemplateEngine::getFunction(std::string_view name)
 {
 	auto itr = std::find_if(m_Functions.begin(),
-	                        m_Functions.end(),
-	                        [name](const std::pair<std::string, TemplateFunction>& a)
-	                        {
-		                        return a.first == name;
-	                        });
+							m_Functions.end(),
+							[name](const std::pair<std::string, TemplateFunction>& a) {
+								return a.first == name;
+							});
 
 	return itr != m_Functions.end() ? &itr->second : nullptr;
 }
@@ -1933,15 +2585,14 @@ TemplateFunction* TemplateEngine::getFunction(std::string_view name)
 void TemplateEngine::compileTemplate(std::string_view name)
 {
 	auto itr = std::find_if(m_Templates.begin(),
-	                        m_Templates.end(),
-	                        [name](const std::pair<std::string, Template>& a)
-	                        {
-		                        return a.first == name;
-	                        });
+							m_Templates.end(),
+							[name](const std::pair<std::string, Template>& a) {
+								return a.first == name;
+							});
 	if (itr != m_Templates.end())
 		return;
 
-	std::ifstream file { std::filesystem::path { "Templates" } / name, std::ios::ate };
+	std::ifstream file { std::filesystem::path { name }, std::ios::ate };
 	if (file)
 	{
 		std::string source(file.tellg(), '\0');
@@ -2045,7 +2696,7 @@ void TemplateEngine::compileTemplate(std::string_view name)
 				std::cerr << "Call started at " << callStart << " did not end, add '" << m_CommandChar << m_CommandChar << "' at the end of the call!\n";
 				break;
 			}
-			//std::cout << source.substr(callStart, (callEnd - 2) - callStart) << '\n';
+			// std::cout << source.substr(callStart, (callEnd - 2) - callStart) << '\n';
 
 			std::size_t callNameStart = callStart;
 
@@ -2137,7 +2788,10 @@ void TemplateEngine::compileTemplate(std::string_view name)
 			source.erase(sourceOffset, sourceEnd - sourceOffset);
 			offset = sourceOffset;
 		}
-		m_Templates.insert({ std::string { name }, Template { std::move(source), std::move(calls) } });
+		m_Templates.insert({
+			std::string { name },
+			Template { std::move(source), std::move(calls) }
+        });
 	}
 	else
 	{
@@ -2148,11 +2802,10 @@ void TemplateEngine::compileTemplate(std::string_view name)
 void TemplateEngine::updateScopesAndFunctionLUT(std::string_view name)
 {
 	auto itr = std::find_if(m_Templates.begin(),
-	                        m_Templates.end(),
-	                        [name](const std::pair<std::string, Template>& a)
-	                        {
-		                        return a.first == name;
-	                        });
+							m_Templates.end(),
+							[name](const std::pair<std::string, Template>& a) {
+								return a.first == name;
+							});
 	if (itr == m_Templates.end() || itr->second.m_LUTVersion == m_FunctionVersion)
 		return;
 
@@ -2266,11 +2919,20 @@ void TemplateEngine::Insert(TemplateEnvironment& environment, const TemplateCall
 
 	switch (macro->m_Type)
 	{
+	case ETemplateMacroType::Null:
+		environment.insertText("null");
+		break;
+	case ETemplateMacroType::Bool:
+		environment.insertText(std::get<bool>(macro->m_Value) ? "true" : "false");
+		break;
 	case ETemplateMacroType::Int:
 		environment.insertText(std::to_string(std::get<std::int64_t>(macro->m_Value)), true);
 		break;
 	case ETemplateMacroType::UInt:
 		environment.insertText(std::to_string(std::get<std::uint64_t>(macro->m_Value)), true);
+		break;
+	case ETemplateMacroType::Float:
+		environment.insertText(std::to_string(std::get<double>(macro->m_Value)), true);
 		break;
 	case ETemplateMacroType::Text:
 		environment.insertText(std::get<std::string>(macro->m_Value), true);
@@ -2280,11 +2942,20 @@ void TemplateEngine::Insert(TemplateEnvironment& environment, const TemplateCall
 		auto ptr = std::get<TemplateMacro*>(macro->m_Value);
 		switch (ptr->m_Type)
 		{
+		case ETemplateMacroType::Null:
+			environment.insertText("null");
+			break;
+		case ETemplateMacroType::Bool:
+			environment.insertText(std::get<bool>(ptr->m_Value) ? "true" : "false");
+			break;
 		case ETemplateMacroType::Int:
 			environment.insertText(std::to_string(std::get<std::int64_t>(ptr->m_Value)), true);
 			break;
 		case ETemplateMacroType::UInt:
 			environment.insertText(std::to_string(std::get<std::uint64_t>(ptr->m_Value)), true);
+			break;
+		case ETemplateMacroType::Float:
+			environment.insertText(std::to_string(std::get<double>(ptr->m_Value)), true);
 			break;
 		case ETemplateMacroType::Text:
 			environment.insertText(std::get<std::string>(ptr->m_Value), true);
@@ -2305,11 +2976,20 @@ void TemplateEngine::Assign(TemplateEnvironment& environment, const TemplateCall
 		auto type = TemplateMacro::GetBestType(str);
 		switch (type)
 		{
+		case ETemplateMacroType::Null:
+			environment.assignNullMacro(call.m_Arguments[0]);
+			break;
+		case ETemplateMacroType::Bool:
+			environment.assignBoolMacro(call.m_Arguments[0], str == "true");
+			break;
 		case ETemplateMacroType::Int:
 			environment.assignIntMacro(call.m_Arguments[0], std::strtoll(str.data(), nullptr, 10));
 			break;
 		case ETemplateMacroType::UInt:
 			environment.assignUIntMacro(call.m_Arguments[0], std::strtoull(str.data(), nullptr, 10));
+			break;
+		case ETemplateMacroType::Float:
+			environment.assignFloatMacro(call.m_Arguments[0], std::strtod(str.data(), nullptr));
 			break;
 		case ETemplateMacroType::Text:
 			environment.assignTextMacro(call.m_Arguments[0], str);
@@ -2421,12 +3101,13 @@ void TemplateEngine::Cast(TemplateEnvironment& environment, const TemplateCall& 
 	auto& newType = call.m_Arguments[2];
 	if (newType == "hexstr")
 	{
-		std::int64_t maxWidth = std::strtoll(call.m_Arguments[3].data(), nullptr, 10);
-		if (maxWidth < 0 || maxWidth > 16)
+		std::int64_t maxWidthS = std::strtoll(call.m_Arguments[3].data(), nullptr, 10);
+		if (maxWidthS < 0 || maxWidthS > 16)
 		{
 			std::cerr << "Casting int to hex less than 0 or wider than 16 is illegal!\n";
 			return;
 		}
+		std::uint64_t maxWidth = static_cast<std::uint64_t>(maxWidthS);
 
 		static constexpr char s_HexDigits[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
 
@@ -2473,7 +3154,7 @@ void TemplateEngine::For(TemplateEnvironment& environment, const TemplateCall& c
 			std::cerr << "'End' was hit, but stack was broken\n";
 			return;
 		}
-		ForData* forData = reinterpret_cast<ForData*>(entry->m_UserData);
+		ForData* forData        = reinterpret_cast<ForData*>(entry->m_UserData);
 		forData->m_CurrentValue += forData->m_Increment;
 		if (forData->m_CurrentValue != forData->m_EndValue)
 		{
@@ -2521,6 +3202,7 @@ void TemplateEngine::Foreach(TemplateEnvironment& environment, const TemplateCal
 		{
 			std::vector<TemplateMacro>::iterator m_Current, m_End;
 		};
+
 		struct StructIterator
 		{
 			std::unordered_map<std::string, TemplateMacro>::iterator m_Current, m_End;
@@ -2588,8 +3270,8 @@ void TemplateEngine::Foreach(TemplateEnvironment& environment, const TemplateCal
 					EForeachType::Array,
 					{},
 					ForeachData::ArrayIterator {
-					    arr.begin(),
-					    arr.end() }
+							 arr.begin(),
+							 arr.end() }
 				};
 				currentValue = &*arr.begin();
 			}
@@ -2601,8 +3283,8 @@ void TemplateEngine::Foreach(TemplateEnvironment& environment, const TemplateCal
 					EForeachType::Struct,
 					{},
 					ForeachData::StructIterator {
-					    map.begin(),
-					    map.end() }
+							  map.begin(),
+							  map.end() }
 				};
 				currentValue = &map.begin()->second;
 			}
@@ -2663,10 +3345,10 @@ void TemplateEngine::If(TemplateEnvironment& environment, const TemplateCall& ca
 		return;
 	}
 	else if (call.m_Function == "Else" ||
-	         call.m_Function == "Elif" ||
-	         call.m_Function == "Elifn" ||
-	         call.m_Function == "Elifeq" ||
-	         call.m_Function == "Elfneq")
+			 call.m_Function == "Elif" ||
+			 call.m_Function == "Elifn" ||
+			 call.m_Function == "Elifeq" ||
+			 call.m_Function == "Elfneq")
 	{
 		auto entry = environment.currentStack();
 		if (!entry || !entry->m_UserData)
@@ -2692,7 +3374,7 @@ void TemplateEngine::If(TemplateEnvironment& environment, const TemplateCall& ca
 	}
 
 	if (call.m_Function == "If" ||
-	    call.m_Function == "Elif")
+		call.m_Function == "Elif")
 	{
 		// Checks if argument is non zero (defined, non empty, non '0' int)
 		auto macro = environment.getMacro(call.m_Arguments[0]);
@@ -2703,11 +3385,20 @@ void TemplateEngine::If(TemplateEnvironment& environment, const TemplateCall& ca
 
 			switch (macro->m_Type)
 			{
+			case ETemplateMacroType::Null:
+				enter = false;
+				break;
+			case ETemplateMacroType::Bool:
+				enter = std::get<bool>(macro->m_Value);
+				break;
 			case ETemplateMacroType::Int:
 				enter = std::get<std::int64_t>(macro->m_Value) != 0;
 				break;
 			case ETemplateMacroType::UInt:
 				enter = std::get<std::uint64_t>(macro->m_Value) != 0;
+				break;
+			case ETemplateMacroType::Float:
+				enter = std::get<double>(macro->m_Value) != 0.0;
 				break;
 			case ETemplateMacroType::Text:
 				enter = !std::get<std::string>(macro->m_Value).empty();
@@ -2722,7 +3413,7 @@ void TemplateEngine::If(TemplateEnvironment& environment, const TemplateCall& ca
 		}
 	}
 	else if (call.m_Function == "Ifn" ||
-	         call.m_Function == "Elifn")
+			 call.m_Function == "Elifn")
 	{
 		// Checks if argument is zero (not defined, empty, '0' int)
 		auto macro = environment.getMacro(call.m_Arguments[0]);
@@ -2733,11 +3424,20 @@ void TemplateEngine::If(TemplateEnvironment& environment, const TemplateCall& ca
 
 			switch (macro->m_Type)
 			{
+			case ETemplateMacroType::Null:
+				enter = false;
+				break;
+			case ETemplateMacroType::Bool:
+				enter = std::get<bool>(macro->m_Value);
+				break;
 			case ETemplateMacroType::Int:
 				enter = std::get<std::int64_t>(macro->m_Value) == 0;
 				break;
 			case ETemplateMacroType::UInt:
 				enter = std::get<std::uint64_t>(macro->m_Value) == 0;
+				break;
+			case ETemplateMacroType::Float:
+				enter = std::get<double>(macro->m_Value) != 0.0;
 				break;
 			case ETemplateMacroType::Text:
 				enter = std::get<std::string>(macro->m_Value).empty();
@@ -2756,7 +3456,7 @@ void TemplateEngine::If(TemplateEnvironment& environment, const TemplateCall& ca
 		}
 	}
 	else if (call.m_Function == "Ifeq" ||
-	         call.m_Function == "Elifeq")
+			 call.m_Function == "Elifeq")
 	{
 		auto macro = environment.getMacro(call.m_Arguments[0]);
 		if (macro)
@@ -2767,11 +3467,20 @@ void TemplateEngine::If(TemplateEnvironment& environment, const TemplateCall& ca
 			auto& text = call.m_Arguments[1];
 			switch (macro->m_Type)
 			{
+			case ETemplateMacroType::Null:
+				enter = false;
+				break;
+			case ETemplateMacroType::Bool:
+				enter = std::get<bool>(macro->m_Value) == (text == "true");
+				break;
 			case ETemplateMacroType::Int:
 				enter = std::get<std::int64_t>(macro->m_Value) == std::strtoll(text.data(), nullptr, 10);
 				break;
 			case ETemplateMacroType::UInt:
 				enter = std::get<std::uint64_t>(macro->m_Value) == std::strtoull(text.data(), nullptr, 10);
+				break;
+			case ETemplateMacroType::Float:
+				enter = std::get<double>(macro->m_Value) == std::strtod(text.data(), nullptr);
 				break;
 			case ETemplateMacroType::Text:
 				enter = std::get<std::string>(macro->m_Value) == text;
@@ -2780,7 +3489,7 @@ void TemplateEngine::If(TemplateEnvironment& environment, const TemplateCall& ca
 		}
 	}
 	else if (call.m_Function == "Ifeqn" ||
-	         call.m_Function == "Elifeqn")
+			 call.m_Function == "Elifeqn")
 	{
 		auto macro = environment.getMacro(call.m_Arguments[0]);
 		if (macro)
@@ -2791,11 +3500,20 @@ void TemplateEngine::If(TemplateEnvironment& environment, const TemplateCall& ca
 			auto& text = call.m_Arguments[1];
 			switch (macro->m_Type)
 			{
+			case ETemplateMacroType::Null:
+				enter = false;
+				break;
+			case ETemplateMacroType::Bool:
+				enter = std::get<bool>(macro->m_Value) != (text == "true");
+				break;
 			case ETemplateMacroType::Int:
 				enter = std::get<std::int64_t>(macro->m_Value) != std::strtoll(text.data(), nullptr, 10);
 				break;
 			case ETemplateMacroType::UInt:
 				enter = std::get<std::uint64_t>(macro->m_Value) != std::strtoull(text.data(), nullptr, 10);
+				break;
+			case ETemplateMacroType::Float:
+				enter = std::get<double>(macro->m_Value) != std::strtod(text.data(), nullptr);
 				break;
 			case ETemplateMacroType::Text:
 				enter = std::get<std::string>(macro->m_Value) != text;
@@ -2836,7 +3554,8 @@ void TemplateEngine::Add(TemplateEnvironment& environment, const TemplateCall& c
 		macro = environment.assignIntMacro(call.m_Arguments[0], 0);
 
 	if (macro->m_Type != ETemplateMacroType::Int &&
-	    macro->m_Type != ETemplateMacroType::UInt)
+		macro->m_Type != ETemplateMacroType::UInt &&
+		macro->m_Type != ETemplateMacroType::Float)
 	{
 		std::cerr << "Macro '" << call.m_Arguments[0] << "' is not a numeric macro!!\n";
 		return;
@@ -2852,6 +3571,130 @@ void TemplateEngine::Add(TemplateEnvironment& environment, const TemplateCall& c
 	case ETemplateMacroType::UInt:
 		std::get<std::uint64_t>(macro->m_Value) += std::strtoull(str.data(), nullptr, 10);
 		break;
+	case ETemplateMacroType::Float:
+		std::get<double>(macro->m_Value) += std::strtod(str.data(), nullptr);
+		break;
+	}
+}
+
+void AddJSONArrayValues(simdjson::ondemand::array arr, TemplateMacro* macro);
+void AddJSONObjectValues(simdjson::ondemand::object obj, TemplateMacro* macro);
+
+void AddJSONArrayValues(simdjson::ondemand::array arr, TemplateMacro* macro)
+{
+	std::size_t index = 0;
+	for (auto value : arr)
+	{
+		simdjson::ondemand::json_type type = value.type();
+		switch (type)
+		{
+		case simdjson::ondemand::json_type::array:
+		{
+			auto amacro = macro->assignArrayMacro(index);
+			AddJSONArrayValues(value.get_array(), amacro);
+			break;
+		}
+		case simdjson::ondemand::json_type::object:
+		{
+			auto smacro = macro->assignStructMacro(index);
+			AddJSONObjectValues(value.get_object(), smacro);
+			break;
+		}
+		case simdjson::ondemand::json_type::number:
+		{
+			simdjson::ondemand::number_type numberType = value.get_number_type();
+			switch (numberType)
+			{
+			case simdjson::ondemand::number_type::floating_point_number:
+				macro->assignFloatMacro(index, value.get_double());
+				break;
+			case simdjson::ondemand::number_type::signed_integer:
+				macro->assignIntMacro(index, value.get_int64());
+				break;
+			case simdjson::ondemand::number_type::unsigned_integer:
+				macro->assignUIntMacro(index, value.get_uint64());
+				break;
+			}
+			break;
+		}
+		case simdjson::ondemand::json_type::string:
+		{
+			macro->assignTextMacro(index, value.get_string());
+			break;
+		}
+		case simdjson::ondemand::json_type::boolean:
+		{
+			macro->assignBoolMacro(index, value.get_bool());
+			break;
+		}
+		case simdjson::ondemand::json_type::null:
+		{
+			macro->assignNullMacro(index);
+			break;
+		}
+		default:
+			break;
+		}
+		++index;
+	}
+}
+
+void AddJSONObjectValues(simdjson::ondemand::object obj, TemplateMacro* macro)
+{
+	for (auto field : obj)
+	{
+		auto value = field.value();
+
+		simdjson::ondemand::json_type type = value.type();
+		switch (type)
+		{
+		case simdjson::ondemand::json_type::array:
+		{
+			auto amacro = macro->assignArrayMacro(field.unescaped_key());
+			AddJSONArrayValues(value.get_array(), amacro);
+			break;
+		}
+		case simdjson::ondemand::json_type::object:
+		{
+			auto smacro = macro->assignStructMacro(field.unescaped_key());
+			AddJSONObjectValues(value.get_object(), smacro);
+			break;
+		}
+		case simdjson::ondemand::json_type::number:
+		{
+			simdjson::ondemand::number_type numberType = value.get_number_type();
+			switch (numberType)
+			{
+			case simdjson::ondemand::number_type::floating_point_number:
+				macro->assignFloatMacro(field.unescaped_key(), value.get_double());
+				break;
+			case simdjson::ondemand::number_type::signed_integer:
+				macro->assignIntMacro(field.unescaped_key(), value.get_int64());
+				break;
+			case simdjson::ondemand::number_type::unsigned_integer:
+				macro->assignUIntMacro(field.unescaped_key(), value.get_uint64());
+				break;
+			}
+			break;
+		}
+		case simdjson::ondemand::json_type::string:
+		{
+			macro->assignTextMacro(field.unescaped_key(), value.get_string());
+			break;
+		}
+		case simdjson::ondemand::json_type::boolean:
+		{
+			macro->assignBoolMacro(field.unescaped_key(), value.get_bool());
+			break;
+		}
+		case simdjson::ondemand::json_type::null:
+		{
+			macro->assignNullMacro(field.unescaped_key());
+			break;
+		}
+		default:
+			break;
+		}
 	}
 }
 
@@ -2870,19 +3713,13 @@ void TemplateEngine::LoadObject(TemplateEnvironment& environment, const Template
 	auto& type = call.m_Arguments[2];
 	if (type == "json")
 	{
-		Json::Value root;
-		{
-			std::ifstream file(objectFilepath);
-			if (!file)
-			{
-				std::cerr << "Failed to open '" << objectFilepath << "'\n";
-				return;
-			}
-			file >> root;
-		}
+		simdjson::ondemand::parser   parser;
+		simdjson::padded_string      json = simdjson::padded_string::load(objectFilepath.string());
+		simdjson::ondemand::document root = parser.iterate(json);
 
 		// Convert json object to macros
 		auto rootMacro = environment.assignStructMacro(call.m_Arguments[0]);
+		AddJSONObjectValues(root.get_object(), rootMacro);
 	}
 	else
 	{
@@ -2893,6 +3730,7 @@ void TemplateEngine::LoadObject(TemplateEnvironment& environment, const Template
 
 void TemplateEngine::CallTemplate(TemplateEnvironment& environment, const TemplateCall& call)
 {
+	TemplateEngine      subEngine;
 	TemplateEnvironment subEnvironment;
 
 	for (std::size_t i = 2; i < call.m_Arguments.size(); ++i)
@@ -2907,7 +3745,7 @@ void TemplateEngine::CallTemplate(TemplateEnvironment& environment, const Templa
 			auto             macro     = environment.getMacro(macroName);
 			if (!macro)
 			{
-				std::cerr << "'" << call.m_Arguments[0] << "' is not an assigned macro\n";
+				std::cerr << "'" << macroName << "' is not an assigned macro\n";
 				continue;
 			}
 			subEnvironment.assignRefMacro(name, *macro);
@@ -2924,15 +3762,16 @@ void TemplateEngine::CallTemplate(TemplateEnvironment& environment, const Templa
 		}
 	}
 
-	auto& target = call.m_Arguments[0];
+	auto&       target       = call.m_Arguments[0];
+	std::string templateFile = call.m_Arguments[1].substr(1, call.m_Arguments[1].size() - 2);
+	EscapeString(templateFile, environment.m_Engine->m_EscapeCharacter);
+	templateFile = environment.m_CWD + '/' + templateFile;
 
 	char previousCommandChar     = environment.m_Engine->m_CommandChar;
 	char previousOpenReference   = environment.m_Engine->m_OpenReference;
 	char previousCloseReference  = environment.m_Engine->m_CloseReference;
 	char previousEscapeCharacter = environment.m_Engine->m_EscapeCharacter;
 
-	std::string templateFile = call.m_Arguments[1].substr(1, call.m_Arguments[1].size() - 2);
-	EscapeString(templateFile, previousEscapeCharacter);
 	auto result = environment.m_Engine->executeTemplate(templateFile, subEnvironment);
 
 	environment.m_Engine->m_CommandChar     = previousCommandChar;

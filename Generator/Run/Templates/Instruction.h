@@ -1,13 +1,24 @@
 #!$<>\
-$$Assign:ARGUMENT_LIST$$
-$$Foreach:ARGUMENT,ARGUMENTS$$
-	$$Ifn:ARGUMENT_LIST$$
-		$$Append:ARGUMENT_LIST,\, $$
+$$Dofile:"OperandValue.tmpl"$$
+$$Dofile:"OperandTypename.tmpl"$$
+$$Dofile:"OperandName.tmpl"$$
+$$Assign:ArgumentList$$
+$$Assign:Typename$$
+$$Assign:Name$$
+$$Assign:Value$$
+$$Foreach:Operand,Instruction.operands$$
+	$$Ifn:ArgumentList$$
+		$$Append:ArgumentList,\, $$
 	$$End$$
-	$$If:ARGUMENT.VALUE$$
-		$$Append:ARGUMENT_LIST,$<ARGUMENT.TYPE>$ $<ARGUMENT.NAME>$ = $<ARGUMENT.VALUE>$$$
+	$$OperandTypename:Typename,SPIRVSpec,Operand$$
+	$$OperandName:Name,SPIRVSpec,Operand$$
+	$$Ifeq:Operand.quantifier,"?"$$
+		$$OperandValue:Value,SPIRVSpec,Operand$$
+		$$Append:ArgumentList,$<Typename>$ $<Name>$ = $<Value>$$$
+	$$Elifeq:Operand.quantifier,"*"$$
+		$$Append:ArgumentList,$<Typename>$ $<Name>$ = {}$$
 	$$Else$$
-		$$Append:ARGUMENT_LIST,$<ARGUMENT.TYPE>$ $<ARGUMENT.NAME>$$$
+		$$Append:ArgumentList,$<Typename>$ $<Name>$$$
 	$$End$$
 $$End$$
-void $$Insert:NAME$$($$Insert:ARGUMENT_LIST$$); // $$Insert:OPCODE$$
+void $$Insert:Instruction.opname$$($$Insert:ArgumentList$$); // $$Insert:Instruction.opcode$$

@@ -1,0 +1,16 @@
+$$Dofile:"GetEnumOperandKind.tmpl"$$
+$$Function:OperandValue,Value,SPIRVSpec,Operand$$
+	$$Ifeq:Operand.kind,"IdRef"$$
+		$$Assign:Value,0$$
+	$$Elifeq:Operand.kind,"LiteralString"$$
+		$$Assign:Value,\"\"$$
+	$$Else$$
+		$$Assign:EnumKind$$
+		$$GetEnumOperandKind:EnumKind,SPIRVSpec,Operand.kind$$
+		$$If:EnumKind$$
+			$$Assign:Value,$<Operand.kind>$::$<EnumKind.Default.enumerant>$$$
+		$$Else$$
+			$$Assign:Value,{}$$
+		$$End$$
+	$$End$$
+$$End$$

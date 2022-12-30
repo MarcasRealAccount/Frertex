@@ -15,8 +15,8 @@ namespace Frertex::Transpilers::SPIRV
 	struct CodeBuffer
 	{
 	public:
-		$$Foreach:INSTRUCTION,INSTRUCTIONS$$
-		$$Template:Insert,"Instruction.h",NAME=INSTRUCTION.NAME,ARGUMENTS=INSTRUCTION.ARGUMENTS,OPCODE=INSTRUCTION.OPCODE$$
+		$$Foreach:Instruction,SPIRVSpec.instructions$$
+		$$Template:Insert,"Instruction.h",SPIRVSpec,Instruction$$
 		$$End$$
 
 		auto begin() { return m_Buffer.begin(); }

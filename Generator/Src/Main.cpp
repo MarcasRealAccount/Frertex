@@ -1,5 +1,5 @@
-//#include "SPIRVGenerator.h"
-//#include "TokenizerLUTGenerator.h"
+// #include "SPIRVGenerator.h"
+// #include "TokenizerLUTGenerator.h"
 #include "Template.h"
 
 #include <chrono>
@@ -7,14 +7,14 @@
 
 int main()
 {
-	//GenerateSPIRV();
-	//GenerateTokenizerLUT();
+	// GenerateSPIRV();
+	// GenerateTokenizerLUT();
 
 	TemplateEngine engine;
 
 	TemplateEnvironment environment;
 
-	std::cout << engine.executeTemplate("SPIRVTemplates.tmpl", environment) << '\n';
+	std::cout << engine.executeTemplate("Templates/SPIRVTemplates.tmpl", environment) << '\n';
 
 	return 0;
 }
