@@ -1,0 +1,111 @@
+!TokenClasses=[Unknown,Identifier,String,BinaryInteger,OctalInteger,DecimalInteger,HexInteger,Float,HexFloat,Symbol,Comment,MultilineComment];
+!StartTokenClass=Unknown;
+!Charset=ASCII;
+!States=1;
+
+Unknown:
+	Class == NonDigit => Step + Transition(String);
+	Class == Digit => Step + Transition(DecimalInteger);
+	Class == Symbol && Char == '"' => Step + Transition(String);
+	Class == Symbol && Char == '/' => State(1) + Step + Transition(Comment);
+	Class == Symbol && Char != '"' && Char != '/' => State(1) + Step + Transition(Symbol);
+	otherwise => End + Step;
+
+Identifier:
+	Class == NonDigit => Step;
+	Class == Digit => Step;
+	Char == '_' => Step;
+	otherwise => End + Transition(Unknown);
+
+String:
+	Char == '\\' && !State(1) => State(1) + Step;
+	Char == '"' && !State(1) => End + Step + Transition(Unknown);
+	Char == '\n' && !State(1) => Error + End + Transition(Unknown);
+	otherwise => Step;
+
+BinaryInteger:
+	Class == Digit => Step;
+	Char == '\'' => Step;
+	otherwise => End + Transition(Unknown);
+
+OctalInteger:
+	Class == Digit => Step;
+	Char == '\'' => Step;
+	otherwise => End + Transition(Unknown);
+
+DecimalInteger:
+	Class == Digit => Step;
+	Char == 'b' => Step + Transition(BinaryInteger);
+	Char == 'B' => Step + Transition(BinaryInteger);
+	Char == 'o' => Step + Transition(OctalInteger);
+	Char == 'O' => Step + Transition(OctalInteger);
+	Char == 'x' => Step + Transition(HexInteger);
+	Char == 'X' => Step + Transition(HexInteger);
+	Char == 'e' => Step + Transition(Float);
+	Char == 'E' => Step + Transition(Float);
+	Char == '.' => Step + Transition(Float);
+	Char == '\'' => Step;
+	otherwise => End + Transition(Unknown);
+
+HexInteger:
+	Class == Digit => Step;
+	Char == 'p' => Step + Transition(HexFloat);
+	Char == 'P' => Step + Transition(HexFloat);
+	Char == 'a' => Step;
+	Char == 'A' => Step;
+	Char == 'b' => Step;
+	Char == 'B' => Step;
+	Char == 'c' => Step;
+	Char == 'C' => Step;
+	Char == 'd' => Step;
+	Char == 'D' => Step;
+	Char == 'e' => Step;
+	Char == 'E' => Step;
+	Char == 'f' => Step;
+	Char == 'F' => Step;
+	Char == '\'' => Step;
+	otherwise => End + Transition(Unknown);
+
+Float:
+	Class == Digit => Step;
+	Char == 'e' => Step;
+	Char == 'E' => Step;
+	Char == '+' => Step;
+	Char == '-' => Step;
+	Char == '\'' => Step;
+	otherwise => End + Transition(Unknown);
+
+HexFloat:
+	Class == Digit => Step;
+	Char == 'a' => Step;
+	Char == 'A' => Step;
+	Char == 'b' => Step;
+	Char == 'B' => Step;
+	Char == 'c' => Step;
+	Char == 'C' => Step;
+	Char == 'd' => Step;
+	Char == 'D' => Step;
+	Char == 'e' => Step;
+	Char == 'E' => Step;
+	Char == 'f' => Step;
+	Char == 'F' => Step;
+	Char == 'p' => Step;
+	Char == 'P' => Step;
+	Char == '+' => Step;
+	Char == '-' => Step;
+	Char == '\'' => Step;
+	otherwise => End + Transition(Unknown);
+
+Symbol:
+	otherwise => End + Transition(Unknown);
+
+Comment:
+	State(1) && Char == '*' => Step + Transition(MultilineComment);
+	State(1) && Char != '/' && Char != '*' => Transition(Symbol);
+	Char == '\n' => End + Transition(Unknown);
+	otherwise => Step;
+
+MultilineComment:
+	Char == '*' && !State(1) => State(1) + Step;
+	Char == '/' && State(1) => End + Step + Transition(Unknown);
+	otherwise => Step;

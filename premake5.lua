@@ -1,8 +1,6 @@
-require("Premake/frertex")
-
 workspace("Frertex")
-	common:setConfigsAndPlatforms()
-	common:addCoreDefines()
+	common:addConfigs()
+	common:addBuildDefines()
 
 	cppdialect("C++20")
 	rtti("Off")
@@ -15,7 +13,19 @@ workspace("Frertex")
 	project("Frertex")
 		location("Frertex/")
 		warnings("Extra")
-		libs.frertex:setup()
+
+		kind("StaticLib")
+		common:outDirs(true)
+
+		includedirs({ "%{prj.location}/Inc/" })
+		files({
+			"%{prj.location}/Inc/**",
+			"%{prj.location}/Src/**"
+		})
+		removefiles({ "*.DS_Store" })
+
+		pkgdeps({ "commonbuild", "backtrace", "fmt" })
+
 		common:addActions()
 
 	project("Docs")
@@ -28,19 +38,18 @@ workspace("Frertex")
 		location("CLI/")
 		warnings("Extra")
 
+		kind("ConsoleApp")
 		common:outDirs()
 		common:debugDir()
 
-		kind("ConsoleApp")
-
 		includedirs({ "%{prj.location}/Src/" })
 		files({ "%{prj.location}/Src/**" })
-		removefiles({
-			"%{prj.location}/Src/OldMain.cpp",
-			"*.DS_Store"
-		})
+		removefiles({ "*.DS_Store" })
 
-		libs.frertex:setupDep()
+		links({ "Frertex" })
+		externalincludedirs({ "%{wks.location}/Frertex/Inc/" })
+
+		pkgdeps({ "commonbuild", "backtrace", "fmt" })
 
 		common:addActions()
 
@@ -48,15 +57,14 @@ workspace("Frertex")
 		location("Generator/")
 		warnings("Extra")
 
+		kind("ConsoleApp")
 		common:outDirs()
 		common:debugDir()
-
-		kind("ConsoleApp")
 
 		includedirs({ "%{prj.location}/Src/" })
 		files({ "%{prj.location}/Src/**" })
 		removefiles({ "*.DS_Store" })
 
-		pkgdeps({ "simdjson@3.0.1" })
+		pkgdeps({ "commonbuild", "backtrace", "simdjson" })
 
 		common:addActions()

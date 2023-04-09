@@ -3135,6 +3135,31 @@ void TemplateEngine::Cast(TemplateEnvironment& environment, const TemplateCall& 
 	}
 }
 
+void TemplateEngine::Function(TemplateEnvironment& environment, const TemplateCall& call)
+{
+	if (call.m_Function == "Function")
+	{
+		auto itr = environment.m_Functions.find(call.m_Arguments[0]);
+		if (itr != environment.m_Functions.end())
+			std::cerr << "'" << call.m_Arguments[0] << "' already exists!\n";
+		else
+			environment.m_Functions.insert({ call.m_Arguments[0], environment.currentScope() });
+		environment.exitScope();
+	}
+}
+
+void TemplateEngine::Return(TemplateEnvironment& environment, const TemplateCall& call)
+{
+	for (std::size_t i = environment.m_CallStack.size(); i > 0; --i)
+	{
+		auto& entry = environment.m_CallStack[i - 1];
+		if (entry.m_StartCall->m_Function == "Function")
+		{
+			break;
+		}
+	}
+}
+
 void TemplateEngine::For(TemplateEnvironment& environment, const TemplateCall& call)
 {
 	struct ForData
@@ -3318,6 +3343,14 @@ void TemplateEngine::Foreach(TemplateEnvironment& environment, const TemplateCal
 		foreachData->m_SourceText = environment.getSourceRange();
 		environment.assignRefMacro(foreachData->m_VariableName, *currentValue);
 	}
+}
+
+void TemplateEngine::Break(TemplateEnvironment& environment, const TemplateCall& call)
+{
+}
+
+void TemplateEngine::Continue(TemplateEnvironment& environment, const TemplateCall& call)
+{
 }
 
 void TemplateEngine::If(TemplateEnvironment& environment, const TemplateCall& call)
@@ -3796,4 +3829,8 @@ void TemplateEngine::CallTemplate(TemplateEnvironment& environment, const Templa
 			file.close();
 		}
 	}
+}
+
+void TemplateEngine::Dofile(TemplateEnvironment& environment, const TemplateCall& call)
+{
 }

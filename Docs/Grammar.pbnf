@@ -1,99 +1,60 @@
-!MainRule       = TranslationUnit;
-!SpaceMethod    = "Whitespace";
-!SpaceDirection = "Both";
+!MainRule  = Declarations;
+!Tokenizer = "Tokens.tknz"
 
-TranslationUnit: Declaration*;
+Declarations: Declaration*;
 
 Declaration?:
 	FunctionDeclaration;
 
-FunctionDeclaration: Attributes Typename Identifier Parameters CompoundStatement;
+FunctionDeclaration: Attributes Typename Identifier Parameters CompountStatement;
 
 Statements: Statement*;
 Statement?:
 	EmptyStatement;
-	ExpressionStatement;
 	CompoundStatement;
-	ReturnStatement;
 	Declaration;
-EmptyStatement:      ";";
-ReturnStatement:     "return" (Expression | BracedInitList)? ";";
-CompoundStatement:   "{" Statements "}";
-ExpressionStatement: Expression ";";
-
-Expression?:          AssignmentExpression;
-AssignmentExpression: Identifier "=" InitializerClause;
-
-InitializerClause?:
-	AssignmentExpression;
-	BracedInitList;
-
-BracedInitList: "{" InitializerClause "}";
+EmptyStatement: ";";
+CompoundStatement: "{" Statements "}";
 
 Parameters: "(" (Parameter ("," Parameter)*)? ")";
-Parameter:  Attributes ParameterTypename Identifier;
-
-Attributes: "[[" (Attribute ("," Attribute)*)? "]]";
-Attribute:  Identifier Arguments;
+Parameter:  Attributes TypeQualifiers Typename Identifier;
 
 Arguments: "(" (Argument ("," Argument)*)? ")";
 Argument:  Literal;
 
-Typename:                  Identifier;
-ParameterTypename: TypeQualifiers Typename
-TypeQualifiers:            TypeQualifier*;
-TypeQualifier:             "in" | "out" | "inout";
+Attributes: ("[[" (Attribute ("," Attribute)*)? "]]")?;
+Attribute:  Identifier Arguments;
 
-Identifier: NonDigit (NonDigit | Digit)*;
-NonDigit?:  '[A-Za-z_]';
+Typename:       (Identifier "::")* Identifier;
+TypeQualifiers: TypeQualifier*;
+TypeQualifier:  "in" | "out" | "inout";
 
-Literal:
+Literal?:
 	IntegerLiteral;
 	FloatLiteral;
 	BoolLiteral;
 
 IntegerLiteral:
-	BinaryLiteral IntegerSuffix?;
-	OctalLiteral IntegerSuffix?;
-	DecimalLiteral IntegerSuffix?;
-	HexadecimalLiteral IntegerSuffix?;
-BinaryLiteral?:            ("0b" | "0B") BinaryDigit ("'"? BinaryDigit)*;
-OctalLiteral?:             ("0o" | "0O") OctalDigit ("'"? OctalDigit)*;
-DecimalLiteral?:           DigitSequence;
-HexadecimalLiteral?:       HexadecimalPrefix HexadecimalDigitSequence;
-BinaryDigit?:              '[01]';
-OctalDigit?:               '[0-7]';
-Digit?:                    '[0-9]';
-HexadecimalDigit?:         '[0-9A-Fa-f]';
-HexadecimalPrefix?:        "0x" | "0X";
-HexadecimalDigitSequence?: HexadecimalDigit ("'"? HexadecimalDigit)*;
-DigitSequence?:            Digit ("'"? Digit)*;
-
-IntegerSuffix?:
-	UnsignedSuffix (ShortSuffix | LongSuffix)?;
-	(ShortSuffix | LongSuffix) UnsignedSuffix?;
-UnsignedSuffix?: "U" | "u";
-ShortSuffix?:    "S" | "s";
-LongSuffix?:     "L" | "l";
+	BinaryIntegerLiteral;
+	OctalIntegerLiteral;
+	DecimalIntegerLiteral;
+	HexIntegerLiteral;
 
 FloatLiteral:
 	DecimalFloatLiteral;
-	HexadecimalFloatLiteral;
-DecimalFloatLiteral?:
-	FractionalConstant ExponentPart? FloatSuffix?;
-	DigitSequence ExponentPart FloatSuffix?;
-HexadecimalFloatLiteral?:
-	HexadecimalPrefix HexadecimalFractionalConstant BinaryExponentPart FloatSuffix?;
-	HexadecimalPrefix HexadecimalDigitSequence BinaryExponentPart FloatSuffix?;
-FractionalConstant:
-	DigitSequence? "." DigitSequence;
-	DigitSequence ".";
-HexadecimalFractionalConstant?:
-	HexadecimalDigitSequence? "." HexadecimalDigitSequence;
-	HexadecimalDigitSequence ".";
-ExponentPart?:       ("e" | "E") Sign? DigitSequence;
-BinaryExponentPart?: ("p" | "P") Sign? DigitSequence;
-Sign?:               "+" | "-";
-FloatSuffix:         "h" | "H" | "f" | "F" | "d" | "D";
+	HexFloatLiteral;
 
 BoolLiteral: "false" | "true";
+
+BinaryIntegerLiteral?:  Token(BinaryInteger, ("0b" | "0B") ("'"? BinaryDigit)*);
+OctalIntegerLiteral?:   Token(OctalInteger, ("0o" | "0O") ("'"? OctalDigit)*);
+DecimalIntegerLiteral?: Token(DecimalInteger, ("'"? DecimalDigit)*);
+HexIntegerLiteral?:     Token(HexInteger, ("0x" | "0X") ("'"? HexDigit)*);
+DecimalFloatLiteral?:   Token(Float, ("'"? DecimalDigit)+ "." ("'"? DecimalDigit)* (("e" | "E") ("+" | "-")? ("'"? DecimalDigit)*)?)
+HexFloatLiteral?:       Token(HexFloat, ("0x" | "0X") ("'"? HexDigit)+ "." ("'"? HexDigit)* (("p" | "P") ("+" | "-")? ("'"? HexDigit)*)?)
+BinaryDigit?:           "0" | "1";
+OctalDigit?:            BinaryDigit | "2" | "3" | "4" | "6" | "7";
+DecimalDigit?:          OctalDigit | "8" | "9";
+HexDigit?:              DecimalDigit | "A" | "B" | "C" | "D" | "E" | "F" | "a" | "b" | "c" | "d" | "e" | "f";
+
+Identifier: Token(Identifier);

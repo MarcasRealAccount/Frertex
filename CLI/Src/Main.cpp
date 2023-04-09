@@ -1,25 +1,16 @@
-#include "Utils/Core.h"
-
-#include <Frertex/Compiler/Compiler.h>
 #include <Frertex/Parser/Parser.h>
-#include <Frertex/Preprocessor/Preprocessor.h>
 #include <Frertex/Tokenizer/Tokenizer.h>
-#include <Frertex/Transpilers/SPIRV/SPIRV.h>
-#include <Frertex/Utils/Profiler.h>
-#include <Frertex/Utils/Utils.h>
+
+#include <chrono>
+#include <iostream>
+#include <string>
+
+#include <Build.h>
 
 #include <fmt/format.h>
 
-#include <chrono>
-#include <filesystem>
-#include <fstream>
-#include <iostream>
-#include <sstream>
-#include <string>
-
 #if BUILD_IS_SYSTEM_WINDOWS
-#include <Windows.h>
-#undef FormatMessage
+	#include <Windows.h>
 #endif
 
 struct ConsoleOutputCPSetter
@@ -46,263 +37,146 @@ private:
 #endif
 };
 
-struct Timer
+std::string Escape(std::string_view escape)
 {
-	using Clock = std::chrono::high_resolution_clock;
-
-	void begin() { m_Start = Clock::now(); }
-	void end() { m_End = Clock::now(); }
-
-	float getTime() const
+	std::string result {};
+	std::size_t offset      = 0;
+	std::size_t nextQuote   = escape.find_first_of('\'', offset);
+	std::size_t nextNewline = escape.find_first_of('\n', offset);
+	while ((nextQuote != std::string_view::npos || nextNewline != std::string_view::npos) && offset < escape.size())
 	{
-		return std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(m_End - m_Start).count();
-	}
-
-	std::string formatTime(Frertex::Utils::CopyMovable<std::string>&& name) const
-	{
-		return fmt::format("{} finished in {} ms\n", name.get(), getTime());
-	}
-
-private:
-	Clock::time_point m_Start, m_End;
-};
-
-std::filesystem::path GetIncludedFilepath(std::string_view filename, const std::filesystem::path& originalFilepath = ".")
-{
-	PROFILE_FUNC;
-
-	return std::filesystem::absolute(std::filesystem::relative(filename, originalFilepath));
-}
-
-Frertex::Source::IncludeData ReadIncludedFile(const std::filesystem::path& filepath)
-{
-	PROFILE_FUNC;
-
-	std::ifstream file { filepath, std::ios::ate };
-	if (file)
-	{
-		std::string source;
-		source.resize(file.tellg());
-		file.seekg(0);
-		file.read(source.data(), source.size());
-		file.close();
-		return { Frertex::Source::EIncludeStatus::Success, std::move(source), std::filesystem::canonical(filepath) };
-	}
-	return {};
-}
-
-void MessageHandler(const Frertex::Source::Sources* sources, const std::vector<Frertex::Tokenizer::Token>& tokens, const Frertex::Message::Message& message)
-{
-	PROFILE_FUNC;
-
-	std::string msg = message.format(sources, tokens);
-	switch (message.m_Type)
-	{
-	case Frertex::Message::EMessageType::Warning:
-		std::cout << msg << '\n';
-		break;
-	case Frertex::Message::EMessageType::Error:
-		std::cerr << msg << '\n';
-		break;
-	}
-}
-
-void TranspilerMessageHandler(const Frertex::FIL::Binary& fil, const Frertex::Message::TranspilerMessage& message)
-{
-	PROFILE_FUNC;
-
-	std::string msg = message.format(fil);
-	switch (message.m_Type)
-	{
-	case Frertex::Message::EMessageType::Warning:
-		std::cout << msg << '\n';
-		break;
-	case Frertex::Message::EMessageType::Error:
-		std::cerr << msg << '\n';
-		break;
-	}
-}
-
-std::size_t UTF8Codepoints(const std::string& str)
-{
-	auto itr = str.begin();
-	auto end = str.end();
-
-	std::size_t count = 0;
-	while (itr != end)
-	{
-		std::uint8_t c = *itr;
-		if (c & 0b1000'0000U)
+		std::size_t closest = std::min(nextQuote, nextNewline);
+		result              += escape.substr(offset, closest - offset);
+		offset              = closest + 1;
+		if (closest == nextQuote)
 		{
-			// UTF8 extending
-			if ((c & 0b0111'0000U) == 0b0111'0000U)
-				itr += 4;
-			else if ((c & 0b0110'0000U) == 0b0110'0000U)
-				itr += 3;
-			else
-				itr += 2;
+			result    += "\\'";
+			nextQuote = escape.find_first_of('\'', offset);
 		}
 		else
 		{
-			// ASCII
-			++itr;
+			result      += "\\n";
+			nextNewline = escape.find_first_of('\n', offset);
 		}
-		++count;
 	}
-	return count;
+	if (offset < escape.size())
+		result += escape.substr(offset);
+	return result;
 }
 
-void PrintASTNode(const Frertex::AST::Node& node, const Frertex::Source::Sources* sources, std::vector<std::vector<std::string>>& lines, std::vector<bool>& layers, bool end = true)
+std::int32_t TimeRescale(std::int32_t scale)
 {
-	{
-		std::vector<std::string> line;
-		std::ostringstream       str;
-		for (auto layer : layers)
-		{
-			if (layer)
-				str << "\xE2\x94\x82 ";
-			else
-				str << "  ";
-		}
-
-		if (end)
-			str << "\xE2\x94\x94\xE2\x94\x80";
-		else
-			str << "\xE2\x94\x9C\xE2\x94\x80";
-
-		layers.emplace_back(!end);
-
-
-		str << Frertex::AST::TypeToString(node.getType());
-		line.emplace_back(str.str());
-		str         = {};
-		auto& token = node.getToken();
-		auto  span  = token.getSpan(sources);
-		str << '(' << Frertex::Source::SourceSpanToString(span) << ')';
-		line.emplace_back(str.str());
-		str = {};
-		if (span.m_StartLine == span.m_EndLine)
-		{
-			auto tokenStr = token.getView(sources);
-			if (tokenStr.find_first_of('\n') >= tokenStr.size())
-			{
-				str << "= \"" << Frertex::Utils::EscapeString(tokenStr) << '"';
-				line.emplace_back(str.str());
-			}
-		}
-		lines.emplace_back(std::move(line));
-	}
-
-	auto& children = node.getChildren();
-	for (std::size_t i = 0; i < children.size(); ++i)
-		PrintASTNode(children[i], sources, lines, layers, i >= children.size() - 1);
-
-	layers.pop_back();
+	if (scale < -30)
+		return -30;
+	if (scale > 30)
+		return 30;
+	return static_cast<std::int32_t>(std::floorf(static_cast<float>(scale) / 3) * 3);
 }
 
-void PrintAST(const Frertex::AST::Node& ast, const Frertex::Source::Sources* sources)
+std::string_view TimeSuffix(std::int32_t scale)
 {
-	std::vector<std::vector<std::string>> lines;
-	std::vector<bool>                     layers;
-	PrintASTNode(ast, sources, lines, layers);
-
-	std::vector<std::size_t> sizes;
-	for (auto& line : lines)
+	switch (scale)
 	{
-		if ((line.size() - 1) > sizes.size())
-			sizes.resize(line.size() - 1, 0);
-
-		for (std::size_t i = 0; i < line.size() - 1; ++i)
-		{
-			auto&       column     = line[i];
-			std::size_t codepoints = UTF8Codepoints(column);
-			if (codepoints > sizes[i])
-				sizes[i] = codepoints;
-		}
+	case -30: return "qs";
+	case -27: return "rs";
+	case -24: return "ys";
+	case -21: return "zs";
+	case -18: return "as";
+	case -15: return "fs";
+	case -12: return "ps";
+	case -9: return "ns";
+	case -6: return "\xc2\xb5s";
+	case -3: return "ms";
+	case 0: return "s";
+	case 3: return "ks";
+	case 6: return "Ms";
+	case 9: return "Gs";
+	case 12: return "Ts";
+	case 15: return "Ps";
+	case 18: return "Es";
+	case 21: return "Zs";
+	case 24: return "Ys";
+	case 27: return "Rs";
+	case 30: return "Qs";
+	default: return "?s";
 	}
-
-	std::ostringstream str;
-	for (auto& line : lines)
-	{
-		for (std::size_t i = 0; i < line.size(); ++i)
-		{
-			auto& column = line[i];
-			str << column;
-			if (i < line.size() - 1)
-				str << std::string(sizes[i] - UTF8Codepoints(column) + 1, ' ');
-		}
-		str << '\n';
-	}
-	std::cout << str.str() << '\n';
 }
 
-int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
+template <class Rep, class Period>
+std::string PrettyDuration(std::chrono::duration<Rep, Period> duration)
 {
-	ConsoleOutputCPSetter _consoleOutputCPSetter {};
+	using Duration     = std::chrono::duration<double>;
+	double       dur   = std::chrono::duration_cast<Duration>(duration).count();
+	std::int32_t scale = TimeRescale(static_cast<std::int32_t>(std::floor(std::log10(dur))));
+	dur                *= std::pow(10.0, -scale);
+	if (dur > 999)
+		return fmt::format("inf {:<2}", TimeSuffix(scale));
+	else if (dur < 0.001)
+		return fmt::format("000.000 {:<2}", TimeSuffix(scale));
+	return fmt::format("{:>7.3f} {:<2}", dur, TimeSuffix(scale));
+}
 
-	Timer              timer {};
-	std::ostringstream times;
+void PrintASTNode(const Frertex::AST::Node& node, std::string_view source, std::uint32_t depth = 0)
+{
+	if (depth > 0)
+		std::cout << std::string(depth * 2, ' ');
+	std::cout << Frertex::AST::TypeToString(node.Type) << "(" << node.Token.Start << " -> " << (node.Token.Start + node.Token.Length) << "): '" << Escape(source.substr(node.Token.Start, node.Token.Length)) << "'\n";
+	for (auto& child : node.Children)
+		PrintASTNode(child, source, depth + 1);
+}
 
-	Frertex::Source::Sources sources;
+int main(int argc, char** argv)
+{
+	auto __cocps = ConsoleOutputCPSetter();
 
-	auto mainSource = sources.addSource(ReadIncludedFile("Test.frer"));
+	std::string test = R"([[VertexShader]]
+void Vert(in float4 inPosition,
+          in float4 inNormal,
+          [[Position]] out float4 outPosition,
+          out float2 outUV)
+{
+}
 
-	timer.begin();
-	auto tokens = Frertex::Tokenizer::Tokenize(sources.getSource(mainSource));
-	timer.end();
-	times << timer.formatTime("Tokenizer");
+[[FragmentShader]]
+void Frag(in float2 inUV,
+          out float4 outColor)
+{
+}
+)";
+	/*for (std::size_t i = 0; i < 16; ++i)
+		test += test;*/
 
-	Frertex::Preprocessor::State preprocessorState { &sources, &GetIncludedFilepath, &ReadIncludedFile, &MessageHandler };
-	timer.begin();
-	tokens = preprocessorState.preprocess(std::move(tokens));
-	timer.end();
-	times << timer.formatTime("Preprocessor");
-	if (preprocessorState.errored())
+	using Clock    = std::chrono::high_resolution_clock;
+	using Duration = std::chrono::duration<double>;
+
+	std::cout << "Input (" << test.size() << "):\n";
+	std::cout << "-- Tokenizer --\n";
+	auto start = Clock::now();
+
+	std::vector<Frertex::Tokenizer::Token> tokens;
+	Frertex::Tokenizer::Tokenize(test.c_str(), test.size(), tokens);
+
+	auto end = Clock::now();
+	std::cout << "Total time:         " << PrettyDuration(end - start) << "\n";
+	std::cout << "Avg time per char:  " << PrettyDuration(std::chrono::duration_cast<Duration>(end - start) / test.size()) << "\n";
+	std::cout << "Avg time per token: " << PrettyDuration(std::chrono::duration_cast<Duration>(end - start) / tokens.size()) << "\n";
+	std::cout << "Tokens (" << tokens.size() << "):\n";
+	/*for (std::size_t i = 0; i < tokens.size(); ++i)
 	{
-		std::cout << Frertex::Utils::ProfilerToString();
-		std::cout << times.str();
-		return 1;
-	}
+		auto token = tokens[i];
+		std::cout << Frertex::Tokenizer::TokenClassToString(token.Class) << " (" << token.Start << " -> " << (token.Start + token.Length - 1) << "): '" << Escape(test.substr(token.Start, token.Length)) << "'\n";
+	}*/
+	std::cout << "---------------\n";
 
-	Frertex::Parser::State parserState { &sources, &MessageHandler };
-	timer.begin();
-	auto ast = parserState.parse(std::move(tokens));
-	timer.end();
-	times << timer.formatTime("Parser");
-	if (parserState.errored())
-	{
-		std::cout << Frertex::Utils::ProfilerToString();
-		std::cout << times.str();
-		return 2;
-	}
+	std::cout << "-- Parser --\n";
+	start = Clock::now();
 
-	Frertex::Compiler::State compilerState { &sources, &MessageHandler, parserState.moveTokens() };
-	timer.begin();
-	auto fil = compilerState.compile(std::move(ast));
-	timer.end();
-	times << timer.formatTime("Compiler");
-	if (compilerState.errored())
-	{
-		std::cout << Frertex::Utils::ProfilerToString();
-		std::cout << times.str();
-		return 3;
-	}
-	Frertex::FIL::WriteToFile(fil, "Output.fil");
+	Frertex::Parser::State parser { test };
+	Frertex::AST::Node     rootASTNode = parser.Parse(tokens);
 
-	Frertex::Transpilers::SPIRV::State spirvState { &TranspilerMessageHandler };
-	timer.begin();
-	auto spirv = spirvState.transpile(std::move(fil));
-	timer.end();
-	times << timer.formatTime("SPIR-V Transpiler");
-	if (spirvState.errored())
-	{
-		std::cout << Frertex::Utils::ProfilerToString();
-		std::cout << times.str();
-		return 4;
-	}
-	Frertex::Transpilers::SPIRV::WriteToFile(spirv, "Output.spv");
-
-	std::cout << Frertex::Utils::ProfilerToString();
-	std::cout << times.str();
-	return 0;
+	end = Clock::now();
+	std::cout << "Total time:         " << PrettyDuration(end - start) << "\n";
+	std::cout << "Avg time per char:  " << PrettyDuration(std::chrono::duration_cast<Duration>(end - start) / test.size()) << "\n";
+	// PrintASTNode(rootASTNode, test);
+	std::cout << "------------\n";
 }

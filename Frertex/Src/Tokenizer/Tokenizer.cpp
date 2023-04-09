@@ -1,109 +1,78 @@
 #include "Frertex/Tokenizer/Tokenizer.h"
-#include "Frertex/Utils/Profiler.h"
 
 namespace Frertex::Tokenizer
 {
-	std::vector<Token> Tokenize(const Source::Source* source, std::size_t start, std::size_t end)
+	std::size_t Tokenize(const void* data, std::size_t size, std::vector<Token>& tokens)
 	{
-		PROFILE_FUNC;
+		if (!data || !size)
+			return 0;
 
-		if (!source || end < start)
-			return {};
+		const std::uint8_t* pData  = reinterpret_cast<const std::uint8_t*>(data);
+		std::size_t         offset = 0;
 
-		auto  id  = source->getID();
-		auto& str = source->getStr();
-		end       = std::min(end, str.size());
+		ETokenClass tokenClass = ETokenClass::Unknown;
+		std::size_t tokenStart = offset;
+		std::size_t tokenEnd   = offset;
 
-		std::vector<Token> tokens;
-
-		std::size_t current            = start;
-		ETokenClass tokenClass         = ETokenClass::Unknown;
-		ETokenClass previousTokenClass = tokenClass;
-
-		std::size_t tokenLength = 0;
-		std::size_t tokenStart  = start;
-		std::size_t tokenEnd    = start;
-		bool        escaped     = false;
-		bool        firstColumn = true;
-
-		char c              = str[start];
-		auto characterClass = s_CharacterClassLUT[static_cast<std::uint8_t>(c) & 0x7F];
-		while (current <= end)
+		std::uint8_t state = pData[offset] & 0x7F;
+		while (offset < size)
 		{
-			bool extraState = false;
-			switch (tokenClass)
+			auto nextState = c_ContextualTokenLUT[static_cast<std::uint8_t>(tokenClass)][state];
+
+			if (nextState.State & ContextualTokenStep)
 			{
-			case ETokenClass::Unknown:
-				extraState  = firstColumn;
-				tokenStart  = current;
-				tokenEnd    = current;
-				tokenLength = 0;
-				break;
-			case ETokenClass::String:
-			case ETokenClass::Preprocessor:
-			case ETokenClass::MultilineComment:
-				extraState = escaped;
-				break;
-			case ETokenClass::Comment:
-				extraState = tokenLength == 1;
-				break;
-			default:
-				break;
+				++offset;
+				++tokenEnd;
 			}
-
-			auto contextualToken = s_ContextualTokenLUT[static_cast<std::uint32_t>(tokenClass) & 0x7FFF'FFFF][(c & 0b0111'1111) | (extraState << 7)];
-
-			escaped            = contextualToken.m_State & 0b1000'0000;
-			previousTokenClass = tokenClass;
-			tokenClass         = contextualToken.m_NewTokenClass;
-
-			bool addToToken = contextualToken.m_State & 1;
-
-			if (contextualToken.m_State & 0b111)
+			auto previousClass = tokenClass;
+			state              = (nextState.State & ContextualTokenPassState) | (pData[offset] & 0x7F);
+			tokenClass         = nextState.Class;
+			if (nextState.State & ContextualTokenEnd)
 			{
-				firstColumn = false;
-				tokenEnd    = current;
-				++current;
-				if (characterClass == ECharacterClass::Newline)
-					firstColumn = true;
-				if (tokenClass != ETokenClass::Unknown)
-					++tokenLength;
-				if (current <= end)
+				auto previousTokenStart = tokenStart;
+				auto previousTokenEnd   = tokenEnd;
+				tokenEnd = tokenStart = offset;
+				if (previousClass != ETokenClass::Unknown)
 				{
-					c              = str[current];
-					characterClass = s_CharacterClassLUT[static_cast<std::uint8_t>(c) & 0x7F];
-				}
-			}
+					std::size_t tokenLength = previousTokenEnd - previousTokenStart;
+					if (tokenLength <= 0xFFFF'FFFF && tokenLength > 0)
+					{
+						bool add = true;
+						if (previousClass == ETokenClass::Symbol && !tokens.empty())
+						{
+							auto& back = tokens.back();
+							if (back.Class == ETokenClass::Symbol && back.Length == 1 && back.Start == offset - 2)
+							{
+								back.Length = 2;
+								add         = false;
+							}
+						}
 
-			if ((!addToToken || contextualToken.m_State & 0b100) && tokenLength)
-			{
-				if (tokenClass == ETokenClass::String)
-				{
-					++tokenStart;
-					--tokenEnd;
+						if (add)
+						{
+							tokens.emplace_back(Token {
+								.Class  = previousClass,
+								.Pad    = {0, 0, 0},
+								.Length = static_cast<std::uint32_t>(tokenLength),
+								.Start  = previousTokenStart
+                            });
+						}
+					}
 				}
-				else if (previousTokenClass == ETokenClass::LastSymbol && characterClass == ECharacterClass::Symbol)
-				{
-					previousTokenClass = ETokenClass::FirstSymbol;
-				}
-
-				tokens.emplace_back(previousTokenClass, tokenStart, tokenEnd - tokenStart + 1, id, id);
-				tokenLength = 0;
-				tokenClass  = ETokenClass::Unknown;
 			}
 		}
-
-		if (tokenLength)
 		{
-			if (tokenClass == ETokenClass::String)
+			std::size_t tokenLength = tokenEnd - tokenStart;
+			if (tokenLength <= 0xFFFF'FFFF && tokenLength > 0)
 			{
-				++tokenStart;
-				--tokenEnd;
+				tokens.emplace_back(Token {
+					.Class  = tokenClass,
+					.Pad    = {0, 0, 0},
+					.Length = static_cast<std::uint32_t>(tokenLength),
+					.Start  = tokenStart
+                });
 			}
-
-			tokens.emplace_back(tokenClass, tokenStart, tokenEnd - tokenStart + 1, id, id);
 		}
-
-		return tokens;
+		return offset;
 	}
 } // namespace Frertex::Tokenizer

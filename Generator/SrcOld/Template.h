@@ -207,7 +207,8 @@ private:
 	std::string m_Source;
 	std::size_t m_Offset = 0;
 
-	std::unordered_map<std::string, TemplateMacro> m_Macros;
+	std::unordered_map<std::string, TemplateMacro>        m_Macros;
+	std::unordered_map<std::string, const TemplateScope*> m_Functions;
 
 	std::vector<TemplateCallStackEntry> m_CallStack;
 
