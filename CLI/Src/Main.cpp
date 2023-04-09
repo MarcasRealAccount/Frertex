@@ -116,13 +116,20 @@ std::string PrettyDuration(std::chrono::duration<Rep, Period> duration)
 	return fmt::format("{:>7.3f} {:<2}", dur, TimeSuffix(scale));
 }
 
-void PrintASTNode(const Frertex::AST::Node& node, std::string_view source, std::uint32_t depth = 0)
+void PrintASTNode(const Frertex::AST::AST& ast, std::uint64_t node, std::string_view source, std::uint32_t depth = 0)
 {
-	if (depth > 0)
-		std::cout << std::string(depth * 2, ' ');
-	std::cout << Frertex::AST::TypeToString(node.Type) << "(" << node.Token.Start << " -> " << (node.Token.Start + node.Token.Length) << "): '" << Escape(source.substr(node.Token.Start, node.Token.Length)) << "'\n";
-	for (auto& child : node.Children)
-		PrintASTNode(child, source, depth + 1);
+	if (node == ~0ULL)
+		return;
+
+	{
+		if (depth > 0)
+			std::cout << std::string(depth * 2, ' ');
+		auto& n = ast[node];
+		std::cout << Frertex::AST::TypeToString(n.Type) << "(" << n.Token.Start << " -> " << (n.Token.Start + n.Token.Length) << "): '" << Escape(source.substr(n.Token.Start, n.Token.Length)) << "'\n";
+	}
+	PrintASTNode(ast, ast[node].Child, source, depth + 1);
+	if (depth != 0)
+		PrintASTNode(ast, ast[node].NextSibling, source, depth);
 }
 
 int main(int argc, char** argv)
@@ -134,7 +141,7 @@ void Vert(in float4 inPosition,
 		  in float4 inNormal,
 		  [[Position]] out float4 outPosition,
 		  out float2 outUV)
-{
+{;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 }
 
 [[FragmentShader]]
@@ -143,14 +150,14 @@ void Frag(in float2 inUV,
 {
 }
 )";
-	/*for (std::size_t i = 0; i < 16; ++i)
-		test += test;*/
+	for (std::size_t i = 0; i < 16; ++i)
+		test += test;
 
 	using Clock    = std::chrono::high_resolution_clock;
 	using Duration = std::chrono::duration<double>;
 
 	std::cout << "Input (" << test.size() << "):\n";
-	std::cout << "-- Tokenizer --\n";
+	std::cout << "--- Tokenizer --\n";
 	auto start = Clock::now();
 
 	std::vector<Frertex::Tokenizer::Token> tokens;
@@ -161,22 +168,24 @@ void Frag(in float2 inUV,
 	std::cout << "Avg time per char:  " << PrettyDuration(std::chrono::duration_cast<Duration>(end - start) / test.size()) << "\n";
 	std::cout << "Avg time per token: " << PrettyDuration(std::chrono::duration_cast<Duration>(end - start) / tokens.size()) << "\n";
 	std::cout << "Tokens (" << tokens.size() << "):\n";
-	for (std::size_t i = 0; i < tokens.size(); ++i)
+	/*for (std::size_t i = 0; i < tokens.size(); ++i)
 	{
 		auto token = tokens[i];
 		std::cout << Frertex::Tokenizer::TokenClassToString(token.Class) << " (" << token.Start << " -> " << (token.Start + token.Length - 1) << "): '" << Escape(test.substr(token.Start, token.Length)) << "'\n";
-	}
-	std::cout << "---------------\n";
+	}*/
+	std::cout << "----------------\n";
 
-	std::cout << "-- Parser --\n";
+	std::cout << "---- Parser ----\n";
 	start = Clock::now();
 
-	Frertex::Parser::State parser { test };
-	Frertex::AST::Node     rootASTNode = parser.Parse(tokens);
+	Frertex::Parser::State parser;
+	Frertex::AST::AST      AST = parser.Parse(test, tokens);
 
 	end = Clock::now();
 	std::cout << "Total time:         " << PrettyDuration(end - start) << "\n";
 	std::cout << "Avg time per char:  " << PrettyDuration(std::chrono::duration_cast<Duration>(end - start) / test.size()) << "\n";
-	PrintASTNode(rootASTNode, test);
-	std::cout << "------------\n";
+	std::cout << "Avg time per node:  " << PrettyDuration(std::chrono::duration_cast<Duration>(end - start) / AST.Size()) << "\n";
+	std::cout << "AST (" << AST.Size() << "):\n";
+	// PrintASTNode(AST, AST.RootNode(), test);
+	std::cout << "----------------\n";
 }

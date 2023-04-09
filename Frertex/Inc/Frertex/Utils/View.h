@@ -44,16 +44,16 @@ namespace Utils
 		}
 
 		template <class Alloc>
-		View(const std::vector<BaseT, Alloc>& arr)
-			: m_Begin(&arr.front()),
-			  m_End(&arr.back())
+		View(const std::vector<BaseT, Alloc>& vec)
+			: m_Begin(&vec.front()),
+			  m_End(&vec.back() + 1ULL)
 		{
 		}
 
 		template <class Alloc>
-		View(const std::vector<ConstT, Alloc>& arr)
-			: m_Begin(&arr.front()),
-			  m_End(&arr.back())
+		View(const std::vector<ConstT, Alloc>& vec)
+			: m_Begin(&vec.front()),
+			  m_End(&vec.back() + 1ULL)
 		{
 		}
 

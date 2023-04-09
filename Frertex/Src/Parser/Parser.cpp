@@ -2,16 +2,18 @@
 
 namespace Frertex::Parser
 {
-	State::State(std::string_view source)
-		: m_Source(source) {}
-
-	AST::Node State::Parse(Utils::View<Tokenizer::Token> tokens)
+	AST::AST State::Parse(std::string_view source, Utils::View<Tokenizer::Token> tokens)
 	{
 		if (tokens.empty())
 			return {};
 
+		m_Source = source;
+		m_AST    = AST::AST {};
+
 		auto result = ParseDeclarations(tokens);
-		return result.Node;
+		m_AST.SetRootNode(result.Node);
+
+		return std::move(m_AST);
 	}
 
 	void State::ReportError(Utils::View<Tokenizer::Token> tokens, std::size_t point, std::string message)
@@ -23,42 +25,59 @@ namespace Frertex::Parser
 		return m_Source.substr(token.Start, token.Length);
 	}
 
-	bool State::TestToken(Tokenizer::Token token, Tokenizer::ETokenClass clazz, std::string_view str)
+	bool State::TestToken(Tokenizer::Token token, TokenPattern pattern)
 	{
-		return token.Class == clazz && GetSource(token) == str;
+		return token.Class == pattern.Class && GetSource(token) == pattern.String;
+	}
+
+	std::size_t State::FindEndToken(Utils::View<Tokenizer::Token> tokens, std::size_t offset, TokenPattern open, TokenPattern close)
+	{
+		std::size_t depth = 1;
+		while (depth > 0)
+		{
+			auto token = tokens[offset];
+			if (TestToken(token, open))
+				++depth;
+			else if (TestToken(token, close))
+				--depth;
+			if (++offset > tokens.size())
+				return ~0ULL;
+		}
+		return offset;
 	}
 
 	ParseResult State::ParseDeclarations(Utils::View<Tokenizer::Token> tokens)
 	{
-		if (tokens.empty())
-			return { 0, { AST::EType::Declarations } };
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::Declarations });
 
-		std::size_t            usedTokens = 0;
-		std::vector<AST::Node> nodes;
+		if (tokens.empty()) return { .UsedTokens = 0, .Node = node };
+
+		std::size_t   usedTokens   = 0;
+		std::uint64_t firstNode    = ~0ULL;
+		std::uint64_t previousNode = ~0ULL;
 
 		auto itr = tokens.begin();
 		auto end = tokens.end();
 		while (itr != end)
 		{
 			auto result = ParseDeclaration({ itr, end });
-			if (result.UsedTokens == 0)
+			if (!result)
 			{
 				ReportError({ itr, end }, itr->Start, "Expected declaration");
 				break;
 			}
 
 			usedTokens += result.UsedTokens;
-			nodes.emplace_back(result.Node);
-			itr += result.UsedTokens;
+			itr        += result.UsedTokens;
+			if (firstNode == ~0ULL) firstNode = result.Node;
+			if (previousNode != ~0ULL)
+				m_AST.SetSiblings(previousNode, result.Node);
+			previousNode = result.Node;
 		}
 
-		return {
-			.UsedTokens = usedTokens,
-			.Node       = {
-						   .Type     = AST::EType::Declarations,
-						   .Token    = {},
-						   .Children = std::move(nodes)}
-		};
+		if (firstNode != ~0ULL)
+			m_AST.SetParent(firstNode, node);
+		return { .UsedTokens = usedTokens, .Node = node };
 	}
 
 	ParseResult State::ParseDeclaration(Utils::View<Tokenizer::Token> tokens)
@@ -67,7 +86,7 @@ namespace Frertex::Parser
 			return {};
 
 		auto result = ParseFunctionDeclaration(tokens);
-		if (result.UsedTokens > 0)
+		if (result)
 			return result;
 
 		return {};
@@ -78,60 +97,74 @@ namespace Frertex::Parser
 		if (tokens.empty())
 			return {};
 
-		std::size_t            usedTokens = 0;
-		std::vector<AST::Node> nodes;
+		std::uint64_t node         = m_AST.Alloc({ .Type = AST::EType::FunctionDeclaration });
+		std::size_t   usedTokens   = 0;
+		std::uint64_t previousNode = ~0ULL;
 
 		auto result = ParseAttributes(tokens);
 		usedTokens  += result.UsedTokens;
-		nodes.emplace_back(std::move(result.Node));
+		m_AST.SetParent(result.Node, node);
+		previousNode = result.Node;
 
 		result = ParseTypename({ tokens.begin() + usedTokens, tokens.end() });
-		if (result.UsedTokens == 0)
+		if (!result)
+		{
+			m_AST.FreeFull(node);
 			return {};
+		}
 		usedTokens += result.UsedTokens;
-		nodes.emplace_back(std::move(result.Node));
+		m_AST.SetSiblings(previousNode, result.Node);
+		previousNode = result.Node;
 
 		result = ParseIdentifier({ tokens.begin() + usedTokens, tokens.end() });
-		if (result.UsedTokens == 0)
+		if (!result)
+		{
+			m_AST.FreeFull(node);
 			return {};
+		}
 		usedTokens += result.UsedTokens;
-		nodes.emplace_back(std::move(result.Node));
+		m_AST.SetSiblings(previousNode, result.Node);
+		previousNode      = result.Node;
+		m_AST[node].Token = m_AST[result.Node].Token;
 
 		result = ParseParameters({ tokens.begin() + usedTokens, tokens.end() });
-		if (result.UsedTokens == 0)
+		if (!result)
+		{
+			m_AST.FreeFull(node);
 			return {};
+		}
 		usedTokens += result.UsedTokens;
-		nodes.emplace_back(std::move(result.Node));
+		m_AST.SetSiblings(previousNode, result.Node);
+		previousNode = result.Node;
 
 		result = ParseCompoundStatement({ tokens.begin() + usedTokens, tokens.end() });
-		if (result.UsedTokens == 0)
+		if (!result)
+		{
+			m_AST.FreeFull(node);
 			return {};
+		}
 		usedTokens += result.UsedTokens;
-		nodes.emplace_back(std::move(result.Node));
+		m_AST.SetSiblings(previousNode, result.Node);
 
-		return {
-			.UsedTokens = usedTokens,
-			.Node       = {
-						   .Type     = AST::EType::FunctionDeclaration,
-						   .Token    = nodes[2].Token,
-						   .Children = std::move(nodes)}
-		};
+		return { .UsedTokens = usedTokens, .Node = node };
 	}
 
 	ParseResult State::ParseStatements(Utils::View<Tokenizer::Token> tokens, bool parseFull)
 	{
-		if (tokens.empty())
-			return { 0, { AST::EType::Statements } };
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::Statements });
 
-		std::size_t            usedTokens = 0;
-		std::vector<AST::Node> nodes;
+		if (tokens.empty()) return { .UsedTokens = 0, .Node = node };
+
+		std::size_t   usedTokens   = 0;
+		std::uint64_t firstNode    = ~0ULL;
+		std::uint64_t previousNode = ~0ULL;
 
 		auto itr = tokens.begin();
 		auto end = tokens.end();
 		while (itr != end)
 		{
 			auto result = ParseStatement({ itr, end });
-			if (result.UsedTokens == 0)
+			if (!result)
 			{
 				if (parseFull)
 					ReportError({ itr, end }, itr->Start, "Expected statement");
@@ -139,17 +172,16 @@ namespace Frertex::Parser
 			}
 
 			usedTokens += result.UsedTokens;
-			nodes.emplace_back(result.Node);
-			itr += result.UsedTokens;
+			itr        += result.UsedTokens;
+			if (firstNode == ~0ULL) firstNode = result.Node;
+			if (previousNode != ~0ULL)
+				m_AST.SetSiblings(previousNode, result.Node);
+			previousNode = result.Node;
 		}
 
-		return {
-			.UsedTokens = usedTokens,
-			.Node       = {
-						   .Type     = AST::EType::Statements,
-						   .Token    = {},
-						   .Children = std::move(nodes)}
-		};
+		m_AST.SetParent(firstNode, node);
+
+		return { .UsedTokens = usedTokens, .Node = node };
 	}
 
 	ParseResult State::ParseStatement(Utils::View<Tokenizer::Token> tokens)
@@ -158,15 +190,15 @@ namespace Frertex::Parser
 			return {};
 
 		auto result = ParseEmptyStatement(tokens);
-		if (result.UsedTokens > 0)
+		if (result)
 			return result;
 
 		result = ParseCompoundStatement(tokens);
-		if (result.UsedTokens > 0)
+		if (result)
 			return result;
 
 		result = ParseDeclaration(tokens);
-		if (result.UsedTokens > 0)
+		if (result)
 			return result;
 
 		return {};
@@ -178,15 +210,13 @@ namespace Frertex::Parser
 			return {};
 
 		auto token = tokens[0];
-		if (!TestToken(token, Tokenizer::ETokenClass::Symbol, ";"))
+		if (!TestToken(token, { .Class = Tokenizer::ETokenClass::Symbol, .String = ";" }))
 			return {};
 
 		return {
 			.UsedTokens = 1,
-			.Node       = {
-						   .Type     = AST::EType::EmptyStatement,
-						   .Token    = token,
-						   .Children = {}}
+			.Node       = m_AST.Alloc({ .Type  = AST::EType::EmptyStatement,
+										.Token = token })
 		};
 	}
 
@@ -195,73 +225,62 @@ namespace Frertex::Parser
 		if (tokens.empty())
 			return {};
 
-		if (!TestToken(tokens[0], Tokenizer::ETokenClass::Symbol, "{"))
+		if (!TestToken(tokens[0], { .Class = Tokenizer::ETokenClass::Symbol, .String = "{" }))
 			return {};
-
-		std::size_t end   = 1;
-		std::size_t depth = 1;
-		while (depth > 0)
-		{
-			auto token = tokens[end];
-			if (TestToken(token, Tokenizer::ETokenClass::Symbol, "{"))
-				++depth;
-			else if (TestToken(token, Tokenizer::ETokenClass::Symbol, "}"))
-				--depth;
-			if (++end == tokens.size())
-				return {};
-		}
+		std::size_t end = FindEndToken(tokens,
+									   1,
+									   { .Class = Tokenizer::ETokenClass::Symbol, .String = "{" },
+									   { .Class = Tokenizer::ETokenClass::Symbol, .String = "}" });
+		if (end == ~0ULL)
+			return {};
 
 		auto result = ParseStatements({ tokens.begin() + 1, tokens.begin() + end }, true);
 
-		return {
-			.UsedTokens = end,
-			.Node       = {
-						   .Type     = AST::EType::CompoundStatement,
-						   .Token    = {},
-						   .Children = { std::move(result.Node) }}
-		};
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::CompoundStatement });
+		m_AST.SetParent(result.Node, node);
+
+		return { .UsedTokens = end, .Node = node };
 	}
 
 	ParseResult State::ParseParameters(Utils::View<Tokenizer::Token> tokens)
 	{
 		if (tokens.empty())
-			return { 0, { AST::EType::Parameters } };
+			return {};
 
-		if (!TestToken(tokens[0], Tokenizer::ETokenClass::Symbol, "("))
-			return { 0, { AST::EType::Parameters } };
+		if (!TestToken(tokens[0], { .Class = Tokenizer::ETokenClass::Symbol, .String = "(" }))
+			return {};
+		std::size_t end = FindEndToken(tokens,
+									   1,
+									   { .Class = Tokenizer::ETokenClass::Symbol, .String = "(" },
+									   { .Class = Tokenizer::ETokenClass::Symbol, .String = ")" });
+		if (end == ~0ULL)
+			return {};
 
-		std::size_t end   = 1;
-		std::size_t depth = 1;
-		while (depth > 0)
-		{
-			auto token = tokens[end];
-			if (TestToken(token, Tokenizer::ETokenClass::Symbol, "("))
-				++depth;
-			else if (TestToken(token, Tokenizer::ETokenClass::Symbol, ")"))
-				--depth;
-			if (++end == tokens.size())
-				return { 0, { AST::EType::Parameters } };
-		}
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::Parameters });
 
-		std::size_t            usedTokens = 0;
-		std::vector<AST::Node> nodes;
+		std::size_t   usedTokens   = 0;
+		std::uint64_t firstNode    = ~0ULL;
+		std::uint64_t previousNode = ~0ULL;
 
 		auto itr    = tokens.begin() + 1;
 		auto endItr = tokens.begin() + end - 1;
 		while (itr != endItr)
 		{
 			auto result = ParseParameter({ itr, endItr });
-			if (result.UsedTokens == 0)
+			if (!result)
 			{
 				ReportError({ itr, endItr }, itr->Start, "Expected parameter");
 				break;
 			}
 
 			usedTokens += result.UsedTokens;
-			nodes.emplace_back(std::move(result.Node));
-			itr += result.UsedTokens;
+			itr        += result.UsedTokens;
+			if (firstNode == ~0ULL) firstNode = result.Node;
+			if (previousNode != ~0ULL)
+				m_AST.SetSiblings(previousNode, result.Node);
+			previousNode = result.Node;
 
-			if (!TestToken(*itr, Tokenizer::ETokenClass::Symbol, ","))
+			if (!TestToken(*itr, { .Class = Tokenizer::ETokenClass::Symbol, .String = "," }))
 			{
 				ReportError({ itr, endItr }, itr->Start, "Expected ',' followed by parameter");
 				break;
@@ -269,13 +288,9 @@ namespace Frertex::Parser
 			++itr;
 		}
 
-		return {
-			.UsedTokens = end,
-			.Node       = {
-						   .Type     = AST::EType::Parameters,
-						   .Token    = {},
-						   .Children = std::move(nodes)}
-		};
+		m_AST.SetParent(firstNode, node);
+
+		return { .UsedTokens = end, .Node = node };
 	}
 
 	ParseResult State::ParseParameter(Utils::View<Tokenizer::Token> tokens)
@@ -283,78 +298,83 @@ namespace Frertex::Parser
 		if (tokens.empty())
 			return {};
 
-		std::size_t            usedTokens = 0;
-		std::vector<AST::Node> nodes;
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::Parameter });
+
+		std::size_t   usedTokens   = 0;
+		std::uint64_t previousNode = ~0ULL;
 
 		auto result = ParseAttributes(tokens);
 		usedTokens  += result.UsedTokens;
-		nodes.emplace_back(std::move(result.Node));
+		m_AST.SetParent(result.Node, node);
+		previousNode = result.Node;
 
 		result     = ParseTypeQualifiers({ tokens.begin() + usedTokens, tokens.end() });
 		usedTokens += result.UsedTokens;
-		nodes.emplace_back(std::move(result.Node));
+		m_AST.SetSiblings(previousNode, result.Node);
+		previousNode = result.Node;
 
 		result = ParseTypename({ tokens.begin() + usedTokens, tokens.end() });
-		if (result.UsedTokens == 0)
+		if (!result)
+		{
+			m_AST.FreeFull(node);
 			return {};
+		}
 		usedTokens += result.UsedTokens;
-		nodes.emplace_back(std::move(result.Node));
+		m_AST.SetSiblings(previousNode, result.Node);
+		previousNode = result.Node;
 
 		result = ParseIdentifier({ tokens.begin() + usedTokens, tokens.end() });
-		if (result.UsedTokens == 0)
+		if (!result)
+		{
+			m_AST.FreeFull(node);
 			return {};
+		}
 		usedTokens += result.UsedTokens;
-		nodes.emplace_back(std::move(result.Node));
+		m_AST.SetSiblings(previousNode, result.Node);
+		m_AST[node].Token = m_AST[result.Node].Token;
 
-		return {
-			.UsedTokens = usedTokens,
-			.Node       = {
-						   .Type     = AST::EType::Parameter,
-						   .Token    = nodes[3].Token,
-						   .Children = std::move(nodes)}
-		};
+		return { .UsedTokens = usedTokens, .Node = node };
 	}
 
 	ParseResult State::ParseArguments(Utils::View<Tokenizer::Token> tokens)
 	{
 		if (tokens.empty())
-			return { 0, { AST::EType::Arguments } };
+			return {};
 
-		if (!TestToken(tokens[0], Tokenizer::ETokenClass::Symbol, "("))
-			return { 0, { AST::EType::Arguments } };
+		if (!TestToken(tokens[0], { .Class = Tokenizer::ETokenClass::Symbol, .String = "(" }))
+			return {};
+		std::size_t end = FindEndToken(tokens,
+									   1,
+									   { .Class = Tokenizer::ETokenClass::Symbol, .String = "(" },
+									   { .Class = Tokenizer::ETokenClass::Symbol, .String = "}" });
+		if (end == ~0ULL)
+			return {};
 
-		std::size_t end   = 1;
-		std::size_t depth = 1;
-		while (depth > 0)
-		{
-			auto token = tokens[end];
-			if (TestToken(token, Tokenizer::ETokenClass::Symbol, "("))
-				++depth;
-			else if (TestToken(token, Tokenizer::ETokenClass::Symbol, ")"))
-				--depth;
-			if (++end == tokens.size())
-				return { 0, { AST::EType::Arguments } };
-		}
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::Arguments });
 
-		std::size_t            usedTokens = 0;
-		std::vector<AST::Node> nodes;
+		std::size_t   usedTokens   = 0;
+		std::uint64_t firstNode    = ~0ULL;
+		std::uint64_t previousNode = ~0ULL;
 
 		auto itr    = tokens.begin() + 1;
 		auto endItr = tokens.begin() + end - 1;
 		while (itr != endItr)
 		{
 			auto result = ParseArgument({ itr, endItr });
-			if (result.UsedTokens == 0)
+			if (!result)
 			{
 				ReportError({ itr, endItr }, itr->Start, "Expected argument");
 				break;
 			}
 
 			usedTokens += result.UsedTokens;
-			nodes.emplace_back(std::move(result.Node));
-			itr += result.UsedTokens;
+			itr        += result.UsedTokens;
+			if (firstNode == ~0ULL) firstNode = result.Node;
+			if (previousNode != ~0ULL)
+				m_AST.SetSiblings(previousNode, result.Node);
+			previousNode = result.Node;
 
-			if (!TestToken(*itr, Tokenizer::ETokenClass::Symbol, ","))
+			if (!TestToken(*itr, { .Class = Tokenizer::ETokenClass::Symbol, .String = "," }))
 			{
 				ReportError({ itr, endItr }, itr->Start, "Expected ',' followed by argument");
 				break;
@@ -362,13 +382,7 @@ namespace Frertex::Parser
 			++itr;
 		}
 
-		return {
-			.UsedTokens = end,
-			.Node       = {
-						   .Type     = AST::EType::Arguments,
-						   .Token    = {},
-						   .Children = std::move(nodes)}
-		};
+		return { .UsedTokens = end, .Node = node };
 	}
 
 	ParseResult State::ParseArgument(Utils::View<Tokenizer::Token> tokens)
@@ -377,65 +391,58 @@ namespace Frertex::Parser
 			return {};
 
 		auto result = ParseLiteral(tokens);
-		if (result.UsedTokens == 0)
+		if (!result)
 			return {};
 
-		return {
-			.UsedTokens = result.UsedTokens,
-			.Node       = {
-						   .Type     = AST::EType::Argument,
-						   .Token    = result.Node.Token,
-						   .Children = { std::move(result.Node) }}
-		};
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::Argument });
+		m_AST.SetParent(result.Node, node);
+		m_AST[node].Token = m_AST[result.Node].Token;
+
+		return { .UsedTokens = result.UsedTokens, .Node = node };
 	}
 
 	ParseResult State::ParseAttributes(Utils::View<Tokenizer::Token> tokens)
 	{
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::Attributes });
+
 		if (tokens.empty())
-			return { 0, { AST::EType::Attributes } };
+			return { .UsedTokens = 0, .Node = node };
 
-		if (!TestToken(tokens[0], Tokenizer::ETokenClass::Symbol, "[["))
-			return { 0, { AST::EType::Attributes } };
+		if (!TestToken(tokens[0], { .Class = Tokenizer::ETokenClass::Symbol, .String = "[[" }))
+			return { .UsedTokens = 0, .Node = node };
+		std::size_t end = FindEndToken(tokens,
+									   1,
+									   { .Class = Tokenizer::ETokenClass::Symbol, .String = "[[" },
+									   { .Class = Tokenizer::ETokenClass::Symbol, .String = "]]" });
+		if (end == ~0ULL)
+			return { .UsedTokens = 0, .Node = node };
 
-		std::size_t end   = 1;
-		std::size_t depth = 1;
-		while (depth > 0)
-		{
-			auto token = tokens[end];
-			if (TestToken(token, Tokenizer::ETokenClass::Symbol, "[["))
-				++depth;
-			else if (TestToken(token, Tokenizer::ETokenClass::Symbol, "]]"))
-				--depth;
-			if (++end == tokens.size())
-				return { 0, { AST::EType::Attributes } };
-		}
-
-		std::size_t            usedTokens = 0;
-		std::vector<AST::Node> nodes;
+		std::size_t   usedTokens   = 0;
+		std::uint64_t firstNode    = ~0ULL;
+		std::uint64_t previousNode = ~0ULL;
 
 		auto itr    = tokens.begin() + 1;
 		auto endItr = tokens.begin() + end - 1;
 		while (itr != endItr)
 		{
 			auto result = ParseAttribute({ itr, endItr });
-			if (result.UsedTokens == 0)
+			if (!result)
 			{
 				ReportError({ itr, endItr }, itr->Start, "Expected attribute");
 				break;
 			}
 
 			usedTokens += result.UsedTokens;
-			nodes.emplace_back(std::move(result.Node));
-			itr += result.UsedTokens;
+			itr        += result.UsedTokens;
+			if (firstNode == ~0ULL) firstNode = result.Node;
+			if (previousNode != ~0ULL)
+				m_AST.SetSiblings(previousNode, result.Node);
+			previousNode = result.Node;
 		}
 
-		return {
-			.UsedTokens = end,
-			.Node       = {
-						   .Type     = AST::EType::Attributes,
-						   .Token    = {},
-						   .Children = std::move(nodes)}
-		};
+		m_AST.SetParent(firstNode, node);
+
+		return { .UsedTokens = end, .Node = node };
 	}
 
 	ParseResult State::ParseAttribute(Utils::View<Tokenizer::Token> tokens)
@@ -443,26 +450,28 @@ namespace Frertex::Parser
 		if (tokens.empty())
 			return {};
 
-		std::size_t            usedTokens = 0;
-		std::vector<AST::Node> nodes;
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::Attribute });
+
+		std::size_t   usedTokens   = 0;
+		std::uint64_t previousNode = ~0ULL;
 
 		auto result = ParseIdentifier(tokens);
-		if (result.UsedTokens == 0)
+		if (!result)
+		{
+			m_AST.FreeFull(node);
 			return {};
+		}
 		usedTokens += result.UsedTokens;
-		nodes.emplace_back(std::move(result.Node));
+		m_AST.SetParent(result.Node, node);
+		previousNode      = result.Node;
+		m_AST[node].Token = m_AST[result.Node].Token;
 
 		result     = ParseArguments(tokens);
 		usedTokens += result.UsedTokens;
-		nodes.emplace_back(std::move(result.Node));
+		m_AST.SetSiblings(previousNode, result.Node);
 
-		return {
-			.UsedTokens = usedTokens,
-			.Node       = {
-						   .Type     = AST::EType::Attribute,
-						   .Token    = nodes[0].Token,
-						   .Children = std::move(nodes)}
-		};
+
+		return { .UsedTokens = usedTokens, .Node = node };
 	}
 
 	ParseResult State::ParseTypename(Utils::View<Tokenizer::Token> tokens)
@@ -470,63 +479,72 @@ namespace Frertex::Parser
 		if (tokens.empty())
 			return {};
 
-		std::size_t            usedTokens = 0;
-		std::vector<AST::Node> nodes;
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::Typename });
+
+		std::size_t   usedTokens   = 0;
+		std::uint64_t firstNode    = ~0ULL;
+		std::uint64_t previousNode = ~0ULL;
 
 		auto itr = tokens.begin();
 		auto end = tokens.end();
 		while (itr != end)
 		{
 			auto result = ParseIdentifier({ itr, end });
-			if (usedTokens == 0 && result.UsedTokens == 0)
-				return {};
+			if (!result)
+			{
+				if (usedTokens)
+					break;
+				else
+					return {};
+			}
 			usedTokens += result.UsedTokens;
-			nodes.emplace_back(std::move(result.Node));
-			itr += result.UsedTokens;
+			itr        += result.UsedTokens;
+			if (firstNode == ~0ULL) firstNode = result.Node;
+			if (previousNode != ~0ULL)
+				m_AST.SetSiblings(previousNode, result.Node);
+			previousNode = result.Node;
 			if (itr == end)
 				break;
 
-			if (!TestToken(*itr, Tokenizer::ETokenClass::Symbol, "::"))
+			if (!TestToken(*itr, { .Class = Tokenizer::ETokenClass::Symbol, .String = "::" }))
 				break;
 			++itr;
 		}
 
-		return {
-			.UsedTokens = usedTokens,
-			.Node       = {
-						   .Type     = AST::EType::Typename,
-						   .Token    = nodes.back().Token,
-						   .Children = std::move(nodes)}
-		};
+		m_AST.SetParent(firstNode, node);
+
+		return { .UsedTokens = usedTokens, .Node = node };
 	}
 
 	ParseResult State::ParseTypeQualifiers(Utils::View<Tokenizer::Token> tokens)
 	{
-		if (tokens.empty())
-			return { 0, { AST::EType::TypeQualifiers } };
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::TypeQualifiers });
 
-		std::size_t            usedTokens = 0;
-		std::vector<AST::Node> nodes;
+		if (tokens.empty())
+			return { .UsedTokens = 0, .Node = node };
+
+		std::size_t   usedTokens   = 0;
+		std::uint64_t firstNode    = ~0ULL;
+		std::uint64_t previousNode = ~0ULL;
 
 		auto itr = tokens.begin();
 		auto end = tokens.end();
 		while (itr != end)
 		{
 			auto result = ParseTypeQualifier({ itr, end });
-			if (result.UsedTokens == 0)
+			if (!result)
 				break;
 			usedTokens += result.UsedTokens;
-			nodes.emplace_back(std::move(result.Node));
-			itr += result.UsedTokens;
+			itr        += result.UsedTokens;
+			if (firstNode == ~0ULL) firstNode = result.Node;
+			if (previousNode != ~0ULL)
+				m_AST.SetSiblings(previousNode, result.Node);
+			previousNode = result.Node;
 		}
 
-		return {
-			.UsedTokens = usedTokens,
-			.Node       = {
-						   .Type     = AST::EType::TypeQualifiers,
-						   .Token    = {},
-						   .Children = std::move(nodes)}
-		};
+		m_AST.SetParent(firstNode, node);
+
+		return { .UsedTokens = usedTokens, .Node = node };
 	}
 
 	ParseResult State::ParseTypeQualifier(Utils::View<Tokenizer::Token> tokens)
@@ -535,18 +553,15 @@ namespace Frertex::Parser
 			return {};
 
 		auto token = tokens[0];
-		if (!TestToken(token, Tokenizer::ETokenClass::Identifier, "in") &&
-			!TestToken(token, Tokenizer::ETokenClass::Identifier, "out") &&
-			!TestToken(token, Tokenizer::ETokenClass::Identifier, "inout"))
+		if (!TestToken(token, { .Class = Tokenizer::ETokenClass::Identifier, .String = "in" }) &&
+			!TestToken(token, { .Class = Tokenizer::ETokenClass::Identifier, .String = "out" }) &&
+			!TestToken(token, { .Class = Tokenizer::ETokenClass::Identifier, .String = "inout" }))
 			return {};
 
-		return {
-			.UsedTokens = 1,
-			.Node       = {
-						   .Type     = AST::EType::TypeQualifier,
-						   .Token    = token,
-						   .Children = {}}
-		};
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::TypeQualifier });
+		m_AST[node].Token  = token;
+
+		return { .UsedTokens = 1, .Node = node };
 	}
 
 	ParseResult State::ParseLiteral(Utils::View<Tokenizer::Token> tokens)
@@ -555,15 +570,15 @@ namespace Frertex::Parser
 			return {};
 
 		auto result = ParseIntegerLiteral(tokens);
-		if (result.UsedTokens != 0)
+		if (!result)
 			return result;
 
 		result = ParseFloatLiteral(tokens);
-		if (result.UsedTokens != 0)
+		if (!result)
 			return result;
 
 		result = ParseBoolLiteral(tokens);
-		if (result.UsedTokens != 0)
+		if (!result)
 			return result;
 
 		return {};
@@ -575,19 +590,19 @@ namespace Frertex::Parser
 			return {};
 
 		auto result = ParseBinaryIntegerLiteral(tokens);
-		if (result.UsedTokens != 0)
+		if (!result)
 			return result;
 
 		result = ParseOctalIntegerLiteral(tokens);
-		if (result.UsedTokens != 0)
+		if (!result)
 			return result;
 
 		result = ParseDecimalIntegerLiteral(tokens);
-		if (result.UsedTokens != 0)
+		if (!result)
 			return result;
 
 		result = ParseHexIntegerLiteral(tokens);
-		if (result.UsedTokens != 0)
+		if (!result)
 			return result;
 
 		return {};
@@ -599,11 +614,11 @@ namespace Frertex::Parser
 			return {};
 
 		auto result = ParseDecimalFloatLiteral(tokens);
-		if (result.UsedTokens != 0)
+		if (!result)
 			return result;
 
 		result = ParseHexFloatLiteral(tokens);
-		if (result.UsedTokens != 0)
+		if (!result)
 			return result;
 
 		return {};
@@ -615,17 +630,14 @@ namespace Frertex::Parser
 			return {};
 
 		auto token = tokens[0];
-		if (!TestToken(token, Tokenizer::ETokenClass::Identifier, "false") &&
-			!TestToken(token, Tokenizer::ETokenClass::Identifier, "true"))
+		if (!TestToken(token, { .Class = Tokenizer::ETokenClass::Identifier, .String = "false" }) &&
+			!TestToken(token, { .Class = Tokenizer::ETokenClass::Identifier, .String = "true" }))
 			return {};
 
-		return {
-			.UsedTokens = 1,
-			.Node       = {
-						   .Type     = AST::EType::BoolLiteral,
-						   .Token    = token,
-						   .Children = {}}
-		};
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::BoolLiteral });
+		m_AST[node].Token  = token;
+
+		return { .UsedTokens = 1, .Node = node };
 	}
 
 	ParseResult State::ParseBinaryIntegerLiteral(Utils::View<Tokenizer::Token> tokens)
@@ -637,13 +649,10 @@ namespace Frertex::Parser
 		if (token.Class != Tokenizer::ETokenClass::BinaryInteger)
 			return {};
 
-		return {
-			.UsedTokens = 1,
-			.Node       = {
-						   .Type     = AST::EType::IntegerLiteral,
-						   .Token    = token,
-						   .Children = {}}
-		};
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::IntegerLiteral });
+		m_AST[node].Token  = token;
+
+		return { .UsedTokens = 1, .Node = node };
 	}
 
 	ParseResult State::ParseOctalIntegerLiteral(Utils::View<Tokenizer::Token> tokens)
@@ -655,13 +664,10 @@ namespace Frertex::Parser
 		if (token.Class != Tokenizer::ETokenClass::OctalInteger)
 			return {};
 
-		return {
-			.UsedTokens = 1,
-			.Node       = {
-						   .Type     = AST::EType::IntegerLiteral,
-						   .Token    = token,
-						   .Children = {}}
-		};
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::IntegerLiteral });
+		m_AST[node].Token  = token;
+
+		return { .UsedTokens = 1, .Node = node };
 	}
 
 	ParseResult State::ParseDecimalIntegerLiteral(Utils::View<Tokenizer::Token> tokens)
@@ -673,13 +679,10 @@ namespace Frertex::Parser
 		if (token.Class != Tokenizer::ETokenClass::DecimalInteger)
 			return {};
 
-		return {
-			.UsedTokens = 1,
-			.Node       = {
-						   .Type     = AST::EType::IntegerLiteral,
-						   .Token    = token,
-						   .Children = {}}
-		};
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::IntegerLiteral });
+		m_AST[node].Token  = token;
+
+		return { .UsedTokens = 1, .Node = node };
 	}
 
 	ParseResult State::ParseHexIntegerLiteral(Utils::View<Tokenizer::Token> tokens)
@@ -691,13 +694,10 @@ namespace Frertex::Parser
 		if (token.Class != Tokenizer::ETokenClass::HexInteger)
 			return {};
 
-		return {
-			.UsedTokens = 1,
-			.Node       = {
-						   .Type     = AST::EType::IntegerLiteral,
-						   .Token    = token,
-						   .Children = {}}
-		};
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::IntegerLiteral });
+		m_AST[node].Token  = token;
+
+		return { .UsedTokens = 1, .Node = node };
 	}
 
 	ParseResult State::ParseDecimalFloatLiteral(Utils::View<Tokenizer::Token> tokens)
@@ -709,13 +709,10 @@ namespace Frertex::Parser
 		if (token.Class != Tokenizer::ETokenClass::Float)
 			return {};
 
-		return {
-			.UsedTokens = 1,
-			.Node       = {
-						   .Type     = AST::EType::FloatLiteral,
-						   .Token    = token,
-						   .Children = {}}
-		};
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::FloatLiteral });
+		m_AST[node].Token  = token;
+
+		return { .UsedTokens = 1, .Node = node };
 	}
 
 	ParseResult State::ParseHexFloatLiteral(Utils::View<Tokenizer::Token> tokens)
@@ -727,13 +724,10 @@ namespace Frertex::Parser
 		if (token.Class != Tokenizer::ETokenClass::HexFloat)
 			return {};
 
-		return {
-			.UsedTokens = 1,
-			.Node       = {
-						   .Type     = AST::EType::FloatLiteral,
-						   .Token    = token,
-						   .Children = {}}
-		};
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::FloatLiteral });
+		m_AST[node].Token  = token;
+
+		return { .UsedTokens = 1, .Node = node };
 	}
 
 	ParseResult State::ParseIdentifier(Utils::View<Tokenizer::Token> tokens)
@@ -744,12 +738,9 @@ namespace Frertex::Parser
 		if (tokens[0].Class != Tokenizer::ETokenClass::Identifier)
 			return {};
 
-		return {
-			.UsedTokens = 1,
-			.Node       = {
-						   .Type     = AST::EType::Identifier,
-						   .Token    = tokens[0],
-						   .Children = {}}
-		};
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::Identifier });
+		m_AST[node].Token  = tokens[0];
+
+		return { .UsedTokens = 1, .Node = node };
 	}
 } // namespace Frertex::Parser

@@ -7,23 +7,32 @@ namespace Frertex::Parser
 {
 	struct ParseResult
 	{
-		std::size_t UsedTokens = 0;
-		AST::Node   Node       = {};
+	public:
+		operator bool() const { return UsedTokens != 0 && Node != ~0ULL; }
+
+	public:
+		std::size_t   UsedTokens = 0;
+		std::uint64_t Node       = ~0ULL;
+	};
+
+	struct TokenPattern
+	{
+		Tokenizer::ETokenClass Class;
+		std::string_view       String;
 	};
 
 	class State
 	{
 	public:
-		State(std::string_view source);
-
-		AST::Node Parse(Utils::View<Tokenizer::Token> tokens);
+		AST::AST Parse(std::string_view source, Utils::View<Tokenizer::Token> tokens);
 
 	private:
 		void ReportError(Utils::View<Tokenizer::Token> tokens, std::size_t point, std::string message);
 
 		std::string_view GetSource(Tokenizer::Token token);
 
-		bool TestToken(Tokenizer::Token token, Tokenizer::ETokenClass clazz, std::string_view str);
+		bool        TestToken(Tokenizer::Token token, TokenPattern pattern);
+		std::size_t FindEndToken(Utils::View<Tokenizer::Token> tokens, std::size_t offset, TokenPattern open, TokenPattern close);
 
 		ParseResult ParseDeclarations(Utils::View<Tokenizer::Token> tokens);
 		ParseResult ParseDeclaration(Utils::View<Tokenizer::Token> tokens);
@@ -61,5 +70,7 @@ namespace Frertex::Parser
 
 	private:
 		std::string_view m_Source;
+
+		AST::AST m_AST;
 	};
 } // namespace Frertex::Parser
