@@ -1,7 +1,7 @@
-#include "TokenLUT/TokenLUT.h"
+#include "Tokenizer/Tokenizer.h"
 
 int main(int argc, char** argv)
 {
-	GenerateTokenLUT();
+	GenerateTokenizer();
 	return 0;
 }

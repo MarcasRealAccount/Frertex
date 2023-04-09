@@ -131,15 +131,15 @@ int main(int argc, char** argv)
 
 	std::string test = R"([[VertexShader]]
 void Vert(in float4 inPosition,
-          in float4 inNormal,
-          [[Position]] out float4 outPosition,
-          out float2 outUV)
+		  in float4 inNormal,
+		  [[Position]] out float4 outPosition,
+		  out float2 outUV)
 {
 }
 
 [[FragmentShader]]
 void Frag(in float2 inUV,
-          out float4 outColor)
+		  out float4 outColor)
 {
 }
 )";
@@ -161,11 +161,11 @@ void Frag(in float2 inUV,
 	std::cout << "Avg time per char:  " << PrettyDuration(std::chrono::duration_cast<Duration>(end - start) / test.size()) << "\n";
 	std::cout << "Avg time per token: " << PrettyDuration(std::chrono::duration_cast<Duration>(end - start) / tokens.size()) << "\n";
 	std::cout << "Tokens (" << tokens.size() << "):\n";
-	/*for (std::size_t i = 0; i < tokens.size(); ++i)
+	for (std::size_t i = 0; i < tokens.size(); ++i)
 	{
 		auto token = tokens[i];
 		std::cout << Frertex::Tokenizer::TokenClassToString(token.Class) << " (" << token.Start << " -> " << (token.Start + token.Length - 1) << "): '" << Escape(test.substr(token.Start, token.Length)) << "'\n";
-	}*/
+	}
 	std::cout << "---------------\n";
 
 	std::cout << "-- Parser --\n";
@@ -177,6 +177,6 @@ void Frag(in float2 inUV,
 	end = Clock::now();
 	std::cout << "Total time:         " << PrettyDuration(end - start) << "\n";
 	std::cout << "Avg time per char:  " << PrettyDuration(std::chrono::duration_cast<Duration>(end - start) / test.size()) << "\n";
-	// PrintASTNode(rootASTNode, test);
+	PrintASTNode(rootASTNode, test);
 	std::cout << "------------\n";
 }

@@ -2,27 +2,27 @@
 
 namespace Frertex::Tokenizer
 {
-	static constexpr std::uint16_t ResultStateStep  = 0x01;
-	static constexpr std::uint16_t ResultStateEnd   = 0x02;
-	static constexpr std::uint16_t ResultStateError = 0x04;
+	static constexpr $TYPE$ ResultStateStep  = 0x01;
+	static constexpr $TYPE$ ResultStateEnd   = 0x02;
+	static constexpr $TYPE$ ResultStateError = 0x04;
 
-	extern ECharacterClass c_CharacterClasses[0x0080];
-	extern bool            c_IncludedTokenClasses[0x000C];
-	extern std::uint16_t          c_TokenLUT[0x10000];
+	extern ECharacterClass c_CharacterClasses[$CHARCLASSESCOUNT$];
+	extern bool            c_IncludedTokenClasses[$TOKENCLASSCOUNT$];
+	extern $TYPE$          c_TokenLUT[$TOKENLUTSIZE$];
 
-	static std::uint16_t GetCharState(std::uint16_t value)
+	static $TYPE$ GetCharState($TYPE$ value)
 	{
-		return (value & 0x0FE0) >> 5;
+		return (value & $CHARMASK$) >> $CHARBIT$;
 	}
 
-	static std::uint16_t SetCharState(std::uint16_t value, std::uint8_t c)
+	static $TYPE$ SetCharState($TYPE$ value, $CHARTYPE$ c)
 	{
-		return (value & ~0x0FE0) | (static_cast<std::uint16_t>(c) << 5);
+		return (value & ~$CHARMASK$) | (static_cast<$TYPE$>(c) << $CHARBIT$);
 	}
 
-	static ETokenClass GetTokenClass(std::uint16_t value)
+	static ETokenClass GetTokenClass($TYPE$ value)
 	{
-		return static_cast<ETokenClass>((value & 0xF000) >> 12);
+		return static_cast<ETokenClass>((value & $TOKENCLASSMASK$) >> $TOKENCLASSBIT$);
 	}
 
 	std::size_t Tokenize(const void* data, std::size_t size, std::vector<Token>& tokens)
@@ -30,18 +30,18 @@ namespace Frertex::Tokenizer
 		if (!data || !size)
 			return 0;
 
-		const std::uint8_t* pChars       = reinterpret_cast<const std::uint8_t*>(data);
-		std::size_t       adjustedSize = size / sizeof(std::uint8_t);
+		const $CHARTYPE$* pChars       = reinterpret_cast<const $CHARTYPE$*>(data);
+		std::size_t       adjustedSize = size / sizeof($CHARTYPE$);
 		std::size_t       offset       = 0;
 
-		std::uint16_t      curState   = SetCharState(static_cast<std::uint16_t>(ETokenClass::Unknown) << 12, pChars[0]);
+		$TYPE$      curState   = SetCharState(static_cast<$TYPE$>(ETokenClass::$INITIALTOKENCLASS$) << $TOKENCLASSBIT$, pChars[0]);
 		std::size_t tokenStart = offset;
 		std::size_t tokenEnd   = offset;
 
 		while (offset < adjustedSize)
 		{
-			std::uint16_t      nextState  = c_TokenLUT[curState];
-			std::uint16_t      charState  = GetCharState(nextState);
+			$TYPE$      nextState  = c_TokenLUT[curState];
+			$TYPE$      charState  = GetCharState(nextState);
 			ETokenClass tokenClass = GetTokenClass(curState);
 			if (charState & ResultStateStep)
 			{
@@ -55,7 +55,7 @@ namespace Frertex::Tokenizer
 				std::size_t previousTokenEnd   = tokenEnd;
 
 				tokenStart = tokenEnd = offset;
-				if (c_IncludedTokenClasses[static_cast<std::uint16_t>(tokenClass)])
+				if (c_IncludedTokenClasses[static_cast<$TYPE$>(tokenClass)])
 				{
 					std::size_t tokenLength = previousTokenEnd - previousTokenStart;
 					if (tokenLength <= 0xFFFF'FFFF && tokenLength > 0)
@@ -78,6 +78,6 @@ namespace Frertex::Tokenizer
 					.Start  = tokenStart });
 			}
 		}
-		return offset * sizeof(std::uint8_t);
+		return offset * sizeof($CHARTYPE$);
 	}
 } // namespace Frertex::Tokenizer

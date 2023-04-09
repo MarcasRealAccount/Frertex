@@ -6,30 +6,14 @@
 
 namespace Frertex::Tokenizer
 {
-	enum class ECharacterClass : std::uint16_t
+	enum class ECharacterClass : $TYPE$
 	{
-		Unknown = 0,
-Whitespace,
-Newline,
-NonDigit,
-Digit,
-Symbol
+		$CHARCLASSES$
 	};
 
-	enum class ETokenClass : std::uint16_t
+	enum class ETokenClass : $TYPE$
 	{
-		Unknown,
-Identifier,
-String,
-BinaryInteger,
-OctalInteger,
-DecimalInteger,
-HexInteger,
-Float,
-HexFloat,
-Symbol,
-Comment,
-MultilineComment
+		$TOKENCLASSES$
 	};
 
 	std::string_view TokenClassToString(ETokenClass clazz);
