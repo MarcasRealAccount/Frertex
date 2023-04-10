@@ -1,3 +1,4 @@
+#include <Frertex/Compiler/Compiler.h>
 #include <Frertex/Parser/Parser.h>
 #include <Frertex/Tokenizer/Tokenizer.h>
 
@@ -116,23 +117,26 @@ std::string PrettyDuration(std::chrono::duration<Rep, Period> duration)
 	return fmt::format("{:>7.3f} {:<2}", dur, TimeSuffix(scale));
 }
 
-void PrintASTNode(const Frertex::AST::AST& ast, std::uint64_t node, std::string_view source, std::uint32_t depth = 0)
+void PrintASTNode(const Frertex::AST::AST& ast, std::uint64_t node, std::string_view source)
 {
-	if (node == ~0ULL)
-		return;
-
-	{
-		if (depth > 0)
-			std::cout << std::string(depth * 2, ' ');
-		auto& n = ast[node];
-		std::cout << Frertex::AST::TypeToString(n.Type) << "(" << n.Token.Start << " -> " << (n.Token.Start + n.Token.Length) << "): '" << Escape(source.substr(n.Token.Start, n.Token.Length)) << "'\n";
-	}
-	PrintASTNode(ast, ast[node].Child, source, depth + 1);
-	if (depth != 0)
-		PrintASTNode(ast, ast[node].NextSibling, source, depth);
+	std::string prefix;
+	Frertex::AST::WalkASTNode(
+		ast,
+		node,
+		[&]([[maybe_unused]] const Frertex::AST::AST& ast2, [[maybe_unused]] std::uint64_t index, const Frertex::AST::Node& node2) -> Frertex::AST::EWalkerResult {
+			std::cout << prefix << Frertex::AST::TypeToString(node2.Type) << "(" << node2.Token.Start << " -> " << (node2.Token.Start + node2.Token.Length) << "): '" << Escape(source.substr(node2.Token.Start, node2.Token.Length)) << "'\n";
+			prefix.push_back(' ');
+			prefix.push_back(' ');
+			return Frertex::AST::EWalkerResult::Continue;
+		},
+		[&]([[maybe_unused]] const Frertex::AST::AST& ast2, [[maybe_unused]] std::uint64_t index, [[maybe_unused]] const Frertex::AST::Node& node2) -> Frertex::AST::EWalkerResult {
+			prefix.pop_back();
+			prefix.pop_back();
+			return Frertex::AST::EWalkerResult::Continue;
+		});
 }
 
-int main(int argc, char** argv)
+int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 {
 	auto __cocps = ConsoleOutputCPSetter();
 
@@ -150,8 +154,8 @@ void Frag(in float2 inUV,
 {
 }
 )";
-	for (std::size_t i = 0; i < 16; ++i)
-		test += test;
+	/*for (std::size_t i = 0; i < 16; ++i)
+		test += test;*/
 
 	using Clock    = std::chrono::high_resolution_clock;
 	using Duration = std::chrono::duration<double>;
@@ -188,4 +192,16 @@ void Frag(in float2 inUV,
 	std::cout << "AST (" << AST.Size() << "):\n";
 	// PrintASTNode(AST, AST.RootNode(), test);
 	std::cout << "----------------\n";
+
+	std::cout << "--- Compiler ---\n";
+	start = Clock::now();
+
+	Frertex::Compiler::State compiler;
+	Frertex::FIL::Binary     FIL = compiler.Compile(test, AST);
+
+	end = Clock::now();
+	std::cout << "Total time:         " << PrettyDuration(end - start) << "\n";
+	std::cout << "Avg time per char:  " << PrettyDuration(std::chrono::duration_cast<Duration>(end - start) / test.size()) << "\n";
+	std::cout << "Avg time per node:  " << PrettyDuration(std::chrono::duration_cast<Duration>(end - start) / AST.Size()) << "\n";
+	std::cout << "--------------\n";
 }

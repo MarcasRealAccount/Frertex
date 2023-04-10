@@ -21,7 +21,6 @@ namespace Frertex::AST
 		case EType::Attributes: return "Attributes";
 		case EType::Attribute: return "Attribute";
 		case EType::Typename: return "Typename";
-		case EType::TypeQualifiers: return "TypeQualifiers";
 		case EType::TypeQualifier: return "TypeQualifier";
 		case EType::IntegerLiteral: return "IntegerLiteral";
 		case EType::FloatLiteral: return "FloatLiteral";
@@ -38,6 +37,17 @@ namespace Frertex::AST
 		  m_Size(0),
 		  m_RootNode(~0ULL)
 	{
+	}
+
+	std::uint64_t AST::GetChild(std::uint64_t node, std::uint64_t index) const
+	{
+		if (node >= m_Nodes.size())
+			return ~0ULL;
+
+		std::uint64_t curNode = m_Nodes[node].Child;
+		for (std::size_t i = 0; curNode < m_Nodes.size() && i < index; ++i)
+			curNode = m_Nodes[curNode].NextSibling;
+		return curNode < m_Nodes.size() ? curNode : ~0ULL;
 	}
 
 	std::uint64_t AST::Alloc(Node&& value)

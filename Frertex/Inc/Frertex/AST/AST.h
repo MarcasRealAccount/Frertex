@@ -3,8 +3,10 @@
 #include "Frertex/Tokenizer/Token.h"
 #include "Frertex/Utils/View.h"
 
+#include <cstddef>
 #include <cstdint>
 
+#include <concepts>
 #include <string_view>
 #include <vector>
 
@@ -52,12 +54,12 @@ namespace Frertex::AST
 		std::uint64_t    PreviousSibling = ~0ULL;
 	};
 
-	static constexpr auto S = sizeof(Node);
-
 	struct AST
 	{
 	public:
 		AST();
+
+		std::uint64_t GetChild(std::uint64_t node, std::uint64_t index) const;
 
 		std::uint64_t RootNode() const { return m_RootNode; }
 
@@ -87,4 +89,109 @@ namespace Frertex::AST
 
 		std::uint64_t m_RootNode;
 	};
+
+	enum class EWalkerResult
+	{
+		Continue,
+		SkipSiblings,
+		SkipChild,
+		Stop
+	};
+
+	template <class F>
+	concept WalkerVisiter =
+		requires(F&& f, AST& a, std::uint64_t index, Node& node) {
+			{
+				f(a, index, node)
+				} -> std::same_as<EWalkerResult>;
+		};
+
+	template <class F>
+	concept ConstWalkerVisiter =
+		requires(F&& f, const AST& a, std::uint64_t index, const Node& node) {
+			{
+				f(a, index, node)
+				} -> std::same_as<EWalkerResult>;
+		};
+
+	namespace Details
+	{
+		EWalkerResult VisitNode(AST& ast, std::uint64_t node, std::size_t depth, WalkerVisiter auto& enter, WalkerVisiter auto& exit)
+		{
+			if (node == ~0ULL)
+				return EWalkerResult::Continue;
+
+			EWalkerResult result = enter(ast, node, ast[node]);
+			if (result == EWalkerResult::Stop)
+				return EWalkerResult::Stop;
+
+			if (result != EWalkerResult::SkipChild)
+				if (VisitNode(ast, ast[node].Child, depth + 1, enter, exit) == EWalkerResult::Stop)
+					return EWalkerResult::Stop;
+
+			EWalkerResult result2 = exit(ast, node, ast[node]);
+
+			if (depth > 0 && result != EWalkerResult::SkipSiblings)
+				if (VisitNode(ast, ast[node].NextSibling, depth, enter, exit) == EWalkerResult::Stop)
+					return EWalkerResult::Stop;
+			return result2;
+		}
+
+		EWalkerResult VisitNode(const AST& ast, std::uint64_t node, std::size_t depth, ConstWalkerVisiter auto& enter, ConstWalkerVisiter auto& exit)
+		{
+			if (node == ~0ULL)
+				return EWalkerResult::Continue;
+
+			EWalkerResult result = enter(ast, node, ast[node]);
+			if (result == EWalkerResult::Stop)
+				return EWalkerResult::Stop;
+
+			if (result != EWalkerResult::SkipChild)
+				if (VisitNode(ast, ast[node].Child, depth + 1, enter, exit) == EWalkerResult::Stop)
+					return EWalkerResult::Stop;
+
+			EWalkerResult result2 = exit(ast, node, ast[node]);
+
+			if (depth > 0 && result != EWalkerResult::SkipSiblings)
+				if (VisitNode(ast, ast[node].NextSibling, depth, enter, exit) == EWalkerResult::Stop)
+					return EWalkerResult::Stop;
+			return result2;
+		}
+	} // namespace Details
+
+	void WalkASTNode(AST& ast, std::uint64_t node, WalkerVisiter auto&& enterNode, WalkerVisiter auto&& exitNode)
+	{
+		auto enter = std::forward<decltype(enterNode)>(enterNode);
+		auto exit  = std::forward<decltype(exitNode)>(exitNode);
+
+		Details::VisitNode(ast, node, 0, enter, exit);
+	}
+
+	void WalkASTNode(AST& ast, std::uint64_t node, WalkerVisiter auto&& enterNode)
+	{
+		WalkASTNode(ast,
+					node,
+					std::forward<decltype(enterNode)>(enterNode),
+					[]([[maybe_unused]] AST& ast, [[maybe_unused]] std::uint64_t index, [[maybe_unused]] Node& node) -> EWalkerResult {
+						return EWalkerResult::Continue;
+					});
+	}
+
+	void WalkASTNode(const AST& ast, std::uint64_t node, ConstWalkerVisiter auto&& enterNode, ConstWalkerVisiter auto&& exitNode)
+	{
+		auto enter = std::forward<decltype(enterNode)>(enterNode);
+		auto exit  = std::forward<decltype(exitNode)>(exitNode);
+
+		Details::VisitNode(ast, node, 0, enter, exit);
+	}
+
+	void WalkASTNode(const AST& ast, std::uint64_t node, ConstWalkerVisiter auto&& enterNode)
+	{
+		WalkASTNode(ast,
+					node,
+					std::forward<decltype(enterNode)>(enterNode),
+					[]([[maybe_unused]] const AST& ast, [[maybe_unused]] std::uint64_t index, [[maybe_unused]] const Node& node) -> EWalkerResult {
+						return EWalkerResult::Continue;
+					});
+	}
 } // namespace Frertex::AST
