@@ -51,7 +51,6 @@ namespace Frertex::Parser
 		ParseResult ParseAttribute(Utils::View<Tokenizer::Token> tokens);
 
 		ParseResult ParseTypename(Utils::View<Tokenizer::Token> tokens);
-		ParseResult ParseTypeQualifiers(Utils::View<Tokenizer::Token> tokens);
 		ParseResult ParseTypeQualifier(Utils::View<Tokenizer::Token> tokens);
 
 		ParseResult ParseLiteral(Utils::View<Tokenizer::Token> tokens);

@@ -141,7 +141,7 @@ void Vert(in float4 inPosition,
 		  in float4 inNormal,
 		  [[Position]] out float4 outPosition,
 		  out float2 outUV)
-{;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+{
 }
 
 [[FragmentShader]]

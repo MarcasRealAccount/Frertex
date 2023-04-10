@@ -17,7 +17,7 @@ EmptyStatement: ";";
 CompoundStatement: "{" Statements "}";
 
 Parameters: "(" (Parameter ("," Parameter)*)? ")";
-Parameter:  Attributes TypeQualifiers Typename Identifier;
+Parameter:  Attributes TypeQualifier? Typename Identifier;
 
 Arguments: "(" (Argument ("," Argument)*)? ")";
 Argument:  Literal;
@@ -25,9 +25,8 @@ Argument:  Literal;
 Attributes: ("[[" (Attribute ("," Attribute)*)? "]]")?;
 Attribute:  Identifier Arguments;
 
-Typename:       (Identifier "::")* Identifier;
-TypeQualifiers: TypeQualifier*;
-TypeQualifier:  "in" | "out" | "inout";
+Typename:      (Identifier "::")* Identifier;
+TypeQualifier: "in" | "out" | "inout";
 
 Literal?:
 	IntegerLiteral;

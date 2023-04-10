@@ -29,7 +29,6 @@ namespace Frertex::AST
 		Attribute,
 
 		Typename,
-		TypeQualifiers,
 		TypeQualifier,
 
 		IntegerLiteral,

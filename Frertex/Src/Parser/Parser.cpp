@@ -308,7 +308,7 @@ namespace Frertex::Parser
 		m_AST.SetParent(result.Node, node);
 		previousNode = result.Node;
 
-		result     = ParseTypeQualifiers({ tokens.begin() + usedTokens, tokens.end() });
+		result     = ParseTypeQualifier({ tokens.begin() + usedTokens, tokens.end() });
 		usedTokens += result.UsedTokens;
 		m_AST.SetSiblings(previousNode, result.Node);
 		previousNode = result.Node;
@@ -516,41 +516,12 @@ namespace Frertex::Parser
 		return { .UsedTokens = usedTokens, .Node = node };
 	}
 
-	ParseResult State::ParseTypeQualifiers(Utils::View<Tokenizer::Token> tokens)
+	ParseResult State::ParseTypeQualifier(Utils::View<Tokenizer::Token> tokens)
 	{
-		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::TypeQualifiers });
+		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::TypeQualifier });
 
 		if (tokens.empty())
 			return { .UsedTokens = 0, .Node = node };
-
-		std::size_t   usedTokens   = 0;
-		std::uint64_t firstNode    = ~0ULL;
-		std::uint64_t previousNode = ~0ULL;
-
-		auto itr = tokens.begin();
-		auto end = tokens.end();
-		while (itr != end)
-		{
-			auto result = ParseTypeQualifier({ itr, end });
-			if (!result)
-				break;
-			usedTokens += result.UsedTokens;
-			itr        += result.UsedTokens;
-			if (firstNode == ~0ULL) firstNode = result.Node;
-			if (previousNode != ~0ULL)
-				m_AST.SetSiblings(previousNode, result.Node);
-			previousNode = result.Node;
-		}
-
-		m_AST.SetParent(firstNode, node);
-
-		return { .UsedTokens = usedTokens, .Node = node };
-	}
-
-	ParseResult State::ParseTypeQualifier(Utils::View<Tokenizer::Token> tokens)
-	{
-		if (tokens.empty())
-			return {};
 
 		auto token = tokens[0];
 		if (!TestToken(token, { .Class = Tokenizer::ETokenClass::Identifier, .String = "in" }) &&
@@ -558,8 +529,7 @@ namespace Frertex::Parser
 			!TestToken(token, { .Class = Tokenizer::ETokenClass::Identifier, .String = "inout" }))
 			return {};
 
-		std::uint64_t node = m_AST.Alloc({ .Type = AST::EType::TypeQualifier });
-		m_AST[node].Token  = token;
+		m_AST[node].Token = token;
 
 		return { .UsedTokens = 1, .Node = node };
 	}
