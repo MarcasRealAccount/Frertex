@@ -12,19 +12,21 @@ namespace Frertex::Tokenizer
 	extern bool            c_IncludedTokenClasses[0x000C];
 	extern std::uint16_t   c_TokenLUT[0x10000];
 
-	static std::uint16_t GetCharState(std::uint16_t value)
+	void AddToken(std::uint16_t state, std::size_t& start, std::uint32_t& length, std::vector<Token>& tokens)
 	{
-		return (value & 0x0FE0) >> 5;
-	}
+		if (!length)
+			return;
 
-	static std::uint16_t SetCharState(std::uint16_t value, std::uint8_t c)
-	{
-		return (value & ~0x0FE0) | (static_cast<std::uint16_t>(c) << 5);
-	}
-
-	static ETokenClass GetTokenClass(std::uint16_t value)
-	{
-		return static_cast<ETokenClass>((value & 0xF000) >> 12);
+		std::uint16_t tokenClass = (state & 0xF000) >> 12;
+		if (c_IncludedTokenClasses[tokenClass])
+		{
+			tokens.emplace_back(Token {
+				.Class  = static_cast<ETokenClass>(tokenClass),
+				.Length = length,
+				.Start  = start });
+		}
+		start  += length;
+		length = 0;
 	}
 
 	std::size_t Tokenize(const void* data, std::size_t size, std::vector<Token>& tokens)
@@ -32,54 +34,27 @@ namespace Frertex::Tokenizer
 		if (!data || !size)
 			return 0;
 
-		const std::uint8_t* pChars       = reinterpret_cast<const std::uint8_t*>(data);
-		std::size_t         adjustedSize = size / sizeof(std::uint8_t);
-		std::size_t         offset       = 0;
+		const std::uint8_t* pChars = reinterpret_cast<const std::uint8_t*>(data);
+		size                       /= sizeof(std::uint8_t);
 
-		std::uint16_t curState   = SetCharState(static_cast<std::uint16_t>(ETokenClass::Unknown) << 12, pChars[0]);
-		std::size_t   tokenStart = offset;
-		std::size_t   tokenEnd   = offset;
+		std::uint16_t curState    = ((static_cast<std::uint16_t>(ETokenClass::Unknown) << 12) & ~0x0FE0) | (static_cast<std::uint16_t>(*pChars) << 5);
+		std::size_t   tokenStart  = 0;
+		std::uint32_t tokenLength = 0;
 
-		while (offset < adjustedSize)
+		std::size_t iters = 0;
+		while (tokenStart < size)
 		{
-			std::uint16_t nextState  = c_TokenLUT[curState];
-			std::uint16_t charState  = GetCharState(nextState);
-			ETokenClass   tokenClass = GetTokenClass(curState);
-			if (charState & ResultStateStep)
-			{
-				++offset;
-				++tokenEnd;
-			}
-			curState = SetCharState(nextState, pChars[offset]);
+			++iters;
+			std::uint16_t result    = c_TokenLUT[curState];
+			std::uint16_t charState = result >> 5;
+			std::uint16_t step      = charState & ResultStateStep;
+			pChars                  += step;
+			tokenLength             += step;
 			if (charState & ResultStateEnd)
-			{
-				std::size_t previousTokenStart = tokenStart;
-				std::size_t previousTokenEnd   = tokenEnd;
-
-				tokenStart = tokenEnd = offset;
-				if (c_IncludedTokenClasses[static_cast<std::uint16_t>(tokenClass)])
-				{
-					std::size_t tokenLength = previousTokenEnd - previousTokenStart;
-					if (tokenLength <= 0xFFFF'FFFF && tokenLength > 0)
-					{
-						tokens.emplace_back(Token {
-							.Class  = tokenClass,
-							.Length = static_cast<std::uint32_t>(tokenLength),
-							.Start  = previousTokenStart });
-					}
-				}
-			}
+				AddToken(curState, tokenStart, tokenLength, tokens);
+			curState = (result & ~0x0FE0) | (static_cast<std::uint16_t>(*pChars) << 5);
 		}
-		{
-			std::size_t tokenLength = tokenEnd - tokenStart;
-			if (tokenLength <= 0xFFFF'FFFF && tokenLength > 0)
-			{
-				tokens.emplace_back(Token {
-					.Class  = GetTokenClass(curState),
-					.Length = static_cast<std::uint32_t>(tokenLength),
-					.Start  = tokenStart });
-			}
-		}
-		return offset * sizeof(std::uint8_t);
+		AddToken(curState, tokenStart, tokenLength, tokens);
+		return iters;
 	}
 } // namespace Frertex::Tokenizer

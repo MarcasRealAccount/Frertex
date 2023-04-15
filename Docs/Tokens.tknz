@@ -1,11 +1,11 @@
 !TokenClasses=[Unknown,Identifier,String,BinaryInteger,OctalInteger,DecimalInteger,HexInteger,Float,HexFloat,Symbol,Comment,MultilineComment];
-!Excluded=[Unknown];
+!Excluded=[Unknown,Comment,MultilineComment];
 !StartTokenClass=Unknown;
 !Charset=ASCII;
 !States=32;
 
 Unknown {
-	"_"           => Step + Transition(Identifier);
+	'_'           => Step + Transition(Identifier);
 	NonDigit      => Step + Transition(Identifier);
 	Digit         => Step + Transition(DecimalInteger);
 	Symbol + '"'  => Step + Transition(String);

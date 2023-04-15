@@ -142,20 +142,20 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 
 	std::string test = R"([[VertexShader]]
 void Vert(in float4 inPosition,
-		  in float4 inNormal,
-		  [[Position]] out float4 outPosition,
-		  out float2 outUV)
+          in float4 inNormal,
+          [[Position]] out float4 outPosition,
+          out float2 outUV)
 {
 }
 
 [[FragmentShader]]
 void Frag(in float2 inUV,
-		  out float4 outColor)
+          out float4 outColor)
 {
 }
 )";
-	/*for (std::size_t i = 0; i < 16; ++i)
-		test += test;*/
+	for (std::size_t i = 0; i < 16; ++i)
+		test += test;
 
 	using Clock    = std::chrono::high_resolution_clock;
 	using Duration = std::chrono::duration<double>;
@@ -165,10 +165,13 @@ void Frag(in float2 inUV,
 	auto start = Clock::now();
 
 	std::vector<Frertex::Tokenizer::Token> tokens;
-	Frertex::Tokenizer::Tokenize(test.c_str(), test.size(), tokens);
+
+	auto iters = Frertex::Tokenizer::Tokenize(test.c_str(), test.size(), tokens);
 
 	auto end = Clock::now();
+	std::cout << "Iterations: " << iters << "\n";
 	std::cout << "Total time:         " << PrettyDuration(end - start) << "\n";
+	std::cout << "Avg time per iter:  " << PrettyDuration(std::chrono::duration_cast<Duration>(end - start) / iters) << "\n";
 	std::cout << "Avg time per char:  " << PrettyDuration(std::chrono::duration_cast<Duration>(end - start) / test.size()) << "\n";
 	std::cout << "Avg time per token: " << PrettyDuration(std::chrono::duration_cast<Duration>(end - start) / tokens.size()) << "\n";
 	std::cout << "Tokens (" << tokens.size() << "):\n";
