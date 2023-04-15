@@ -1,3 +1,5 @@
+// Auto generated
+
 #pragma once
 
 #include <cstdint>

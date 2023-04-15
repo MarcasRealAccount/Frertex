@@ -1,3 +1,5 @@
+// Auto generated
+
 #include "Frertex/Tokenizer/Tokenizer.h"
 
 namespace Frertex::Tokenizer

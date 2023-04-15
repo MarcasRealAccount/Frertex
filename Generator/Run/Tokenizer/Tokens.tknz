@@ -5,6 +5,7 @@
 !States=32;
 
 Unknown {
+	"_"           => Step + Transition(Identifier);
 	NonDigit      => Step + Transition(Identifier);
 	Digit         => Step + Transition(DecimalInteger);
 	Symbol + '"'  => Step + Transition(String);

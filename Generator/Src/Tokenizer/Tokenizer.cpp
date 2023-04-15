@@ -156,7 +156,7 @@ void GenerateTokenizer()
 		if (i < tknz.TokenClasses.size() - 1)
 		{
 			tokenClassesStr            += ",\n";
-			tokenClassesIncludedLUTStr += ",\n";
+			tokenClassesIncludedLUTStr += ",";
 			tokenClassesCasesStr       += "\n";
 		}
 	}
