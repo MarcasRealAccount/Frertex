@@ -487,15 +487,27 @@ namespace Frertex::Parser
 
 		auto itr = tokens.begin();
 		auto end = tokens.end();
+
+		if (TestToken(*itr, { .Class = Tokenizer::ETokenClass::Symbol, .String = "::" }))
+		{
+			previousNode = firstNode = m_AST.Alloc({ .Type = AST::EType::Symbol, .Token = *itr });
+			++itr;
+		}
+
 		while (itr != end)
 		{
 			auto result = ParseIdentifier({ itr, end });
 			if (!result)
 			{
 				if (usedTokens)
+				{
+					ReportError({ tokens.begin(), itr }, itr->Start, "Expected identifier");
 					break;
+				}
 				else
+				{
 					return {};
+				}
 			}
 			usedTokens += result.UsedTokens;
 			itr        += result.UsedTokens;
@@ -508,6 +520,9 @@ namespace Frertex::Parser
 
 			if (!TestToken(*itr, { .Class = Tokenizer::ETokenClass::Symbol, .String = "::" }))
 				break;
+			auto subnode = m_AST.Alloc({ .Type = AST::EType::Symbol, .Token = *itr });
+			m_AST.SetSiblings(previousNode, subnode);
+			previousNode = subnode;
 			++itr;
 		}
 

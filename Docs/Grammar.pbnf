@@ -25,7 +25,7 @@ Argument:  Literal;
 Attributes: ("[[" (Attribute ("," Attribute)*)? "]]")?;
 Attribute:  Identifier Arguments;
 
-Typename:      (Identifier "::")* Identifier;
+Typename:      "::"? Identifier ("::" Identifier)*;
 TypeQualifier: "in" | "out" | "inout";
 
 Literal?:

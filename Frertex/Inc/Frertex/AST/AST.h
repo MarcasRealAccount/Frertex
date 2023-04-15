@@ -37,7 +37,8 @@ namespace Frertex::AST
 		FloatLiteral,
 		BoolLiteral,
 
-		Identifier
+		Identifier,
+		Symbol
 	};
 
 	std::string_view TypeToString(EType type);
