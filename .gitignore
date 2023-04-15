@@ -1,5 +1,6 @@
 # Output
 /Bin/
+/Generator/Run/**/Out/
 
 # Visual Studio
 /.vs/
